@@ -1,7 +1,7 @@
 <template>
   <div :class="['message', message.type, isSent ? 'sent' : 'received']">
     <div class="message-header sticky-header flex justify-between items-center mb-1">
-      <span class="sender-id text-xs text-gray-500">{{ isSent ? 'You' : `User ${message.userId}` }}</span>
+      <span class="sender-id text-xs text-gray-500">{{ isSent ? 'You' : `${message.userId}` }}</span>
       <div class="timestamp-copy-container flex items-center space-x-2">
         <span class="timestamp text-xs text-gray-500">{{ formattedTimestamp }}</span>
         <!-- 仅当消息类型为 'text' 时显示复制按钮 -->
@@ -61,20 +61,31 @@ export default defineComponent({
 
     const copyStatus = ref<'idle' | 'success' | 'fail'>('idle');
 
+    // 检查是否在Tauri环境中
+    const isTauriEnvironment = (): boolean => {
+      return (window as any).__TAURI__ !== undefined;
+    };
+
     const handleCopy = async () => {
       if (copyStatus.value !== 'idle') return; // 防止多次点击
 
       try {
-        await ClipboardService.copyMessage(props.message);
+        if (isTauriEnvironment()) {
+          // 在Tauri环境下使用ClipboardService
+          await ClipboardService.copyMessage(props.message);
+        } else {
+          // 在浏览器环境下使用navigator.clipboard API
+          await navigator.clipboard.writeText(props.message.content);
+        }
         copyStatus.value = 'success';
       } catch (error) {
+        console.error('复制失败:', error);
         copyStatus.value = 'fail';
       }
 
-      // 5秒后恢复按钮状态
       setTimeout(() => {
         copyStatus.value = 'idle';
-      }, 5000);
+      }, 3000);
     };
 
     return {
@@ -168,6 +179,12 @@ export default defineComponent({
   max-width: 100%;
   height: auto;
   border-radius: 0.25rem; /* 圆角 */
+}
+
+.sender-id {
+  font-size: 0.875rem; /* text-sm */
+  margin-right: 1rem; /* mr-4 */
+  color: #6B7280; /* text-gray-500 */
 }
 
 @media (max-width: 600px) {
