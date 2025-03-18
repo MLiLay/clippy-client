@@ -13,8 +13,8 @@ export const useChatStore = defineStore('chat', () => {
   const isConnected = ref(false);
   const room = ref('');
   const userId = ref('');
-  const serverAddress = ref(''); // 新增：服务器地址
-  const serverPort = ref('7000'); // 新增：服务器端口
+  const serverAddress = ref('');
+  const serverPort = ref('8989');
 
   // 自动复制
   const autoCopyText = ref(true); // 默认开启

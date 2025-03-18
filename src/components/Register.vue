@@ -13,7 +13,7 @@
       <input 
         v-model="serverPort" 
         :disabled="isConnected"
-        placeholder="Server Port (e.g., 7000)" 
+        placeholder="Server Port (e.g., 8989)" 
       />
       <input 
         v-model="room" 
