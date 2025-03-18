@@ -1,6 +1,6 @@
 <template>
   <div :class="['message', message.type, isSent ? 'sent' : 'received']">
-    <div class="message-header flex justify-between items-center mb-1">
+    <div class="message-header sticky-header flex justify-between items-center mb-1">
       <span class="sender-id text-xs text-gray-500">{{ isSent ? 'You' : `User ${message.userId}` }}</span>
       <div class="timestamp-copy-container flex items-center space-x-2">
         <span class="timestamp text-xs text-gray-500">{{ formattedTimestamp }}</span>
@@ -96,6 +96,7 @@ export default defineComponent({
   word-break: break-word; /* 自动换行 */
   position: relative; /* 为复制按钮定位提供基础 */
   max-width: 80%;
+  overflow: visible; /* 允许sticky header溢出 */
 }
 
 .message.sent {
@@ -115,6 +116,17 @@ export default defineComponent({
   color: #555;
   display: flex;
   justify-content: space-between;
+}
+
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 5px 0;
+  margin: -5px 0 5px 0;
+  background: inherit;
+  backdrop-filter: blur(2px);
+  width: 100%;
 }
 
 .timestamp-copy-container {
