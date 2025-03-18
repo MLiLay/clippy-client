@@ -1,7 +1,7 @@
 <template>
   <div :class="['message', message.type, isSent ? 'sent' : 'received']">
     <div class="message-header flex justify-between items-center mb-1">
-      <span class="sender-id text-xs text-gray-500">{{ isSent ? 'You' : `User ${message.fromUserId}` }}</span>
+      <span class="sender-id text-xs text-gray-500">{{ isSent ? 'You' : `User ${message.userId}` }}</span>
       <div class="timestamp-copy-container flex items-center space-x-2">
         <span class="timestamp text-xs text-gray-500">{{ formattedTimestamp }}</span>
         <!-- 仅当消息类型为 'text' 时显示复制按钮 -->
@@ -51,7 +51,7 @@ export default defineComponent({
     },
   },
   setup(props) {
-    const isSent = computed(() => props.message.fromUserId === props.userId);
+    const isSent = computed(() => props.message.userId === props.userId);
     const formattedTimestamp = computed(() => {
       return dayjs(props.message.timestamp)
         .utc()

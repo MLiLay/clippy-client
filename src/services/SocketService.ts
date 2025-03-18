@@ -62,14 +62,14 @@ class SocketService {
       this.disconnect();
     });
 
-    this.socket.on('syncData', async (data: Message) => {
+    this.socket.on('sendMessage', async (data: Message) => {
       const store = useChatStore();
       store.addMessage(data);
-      console.log('Received syncData:', data);
+      console.log('Received sendMessage:', data);
 
       // 根据设置自动复制和非自己发送的消息自动复制
       try {
-        if (data.type === 'text' && store.autoCopyText && data.fromUserId !== store.userId) {
+        if (data.type === 'text' && store.autoCopyText && data.userId !== store.userId) {
           await ClipboardService.copyMessage(data);
         } else if (data.type === 'image' && store.autoCopyImage) {
           await ClipboardService.copyMessage(data);
@@ -120,9 +120,9 @@ class SocketService {
   sendMessage(type: 'text' | 'image', content: string) {
     if (this.socket && this.socket.connected) {
       const store = useChatStore();
-      const message: Message = { type, content, fromUserId: store.userId, timestamp: new Date().toISOString() };
-      this.socket.emit('syncData', message);
-      console.log(`Emitting syncData event with type: ${type}, message:`, message);
+      const message: Message = { type, content, userId: store.userId, timestamp: new Date().toISOString() };
+      this.socket.emit('sendMessage', message);
+      console.log(`Emitting sendMessage event with type: ${type}, message:`, message);
     } else {
       Toast.fail('Cannot send message because socket is not connected.');
       console.error('Cannot send message because socket is not connected.');

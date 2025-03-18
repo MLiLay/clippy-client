@@ -4,7 +4,7 @@ import { ref } from 'vue';
 export interface Message {
   type: 'text' | 'image';
   content: string;
-  fromUserId: string;
+  userId: string;
   timestamp: string;
 }
 
