@@ -33,6 +33,7 @@
 import { defineComponent, computed, ref } from 'vue';
 import { Message } from '../stores/useChatStore';
 import ClipboardService from '../services/ClipboardService';
+import { isTauri } from '@tauri-apps/api/core';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 
@@ -62,15 +63,11 @@ export default defineComponent({
     const copyStatus = ref<'idle' | 'success' | 'fail'>('idle');
 
     // 检查是否在Tauri环境中
-    const isTauriEnvironment = (): boolean => {
-      return (window as any).__TAURI__ !== undefined;
-    };
-
     const handleCopy = async () => {
       if (copyStatus.value !== 'idle') return; // 防止多次点击
 
       try {
-        if (isTauriEnvironment()) {
+        if (isTauri()) {
           // 在Tauri环境下使用ClipboardService
           await ClipboardService.copyMessage(props.message);
         } else {
