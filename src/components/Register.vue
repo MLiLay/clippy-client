@@ -115,7 +115,7 @@ export default defineComponent({
     onMounted(() => {
       // 如果store中没有端口，设置默认端口
       if (!store.serverPort) {
-        store.setServerPort('7000');
+        store.setServerPort('8989');
       }
     });
 
