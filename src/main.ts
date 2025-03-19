@@ -10,6 +10,8 @@ import { useChatStore } from './stores/useChatStore';
 import Vant from 'vant';
 import 'vant/lib/index.css'; // 导入 Vant 样式
 import { isTauri } from '@tauri-apps/api/core';
+import VueEasyLightbox from 'vue-easy-lightbox';
+import 'vue-easy-lightbox/dist/external-css/vue-easy-lightbox.css';
 
 library.add(faImage, faGear, faGlobe, faPaperPlane, faCopy, faXmark, faCircleInfo);
 
@@ -25,6 +27,9 @@ app.use(pinia);
 
 // 使用 Vant UI 组件库
 app.use(Vant);
+
+// 使用 VueEasyLightbox 图片浏览器插件
+app.use(VueEasyLightbox);
 
 // 获取 store 实例
 const store = useChatStore(pinia);
