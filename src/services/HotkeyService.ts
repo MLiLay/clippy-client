@@ -4,20 +4,43 @@ import { sendTextMessage } from './SendingService';
 import SocketService from './SocketService';
 import { useChatStore } from '../stores/useChatStore';
 import { Toast } from 'vant';
-import { invoke } from '@tauri-apps/api/core'; // 用于调用 Tauri 命令
+import { invoke, isTauri } from '@tauri-apps/api/core'; // 用于调用 Tauri 命令
 
 class HotkeyService {
   private currentShortcut: string;
   private store: ReturnType<typeof useChatStore>;
   private isInitialized: boolean = false;
+  private isTauriEnv: boolean = false;
 
   constructor(store: ReturnType<typeof useChatStore>) {
     this.store = store;
     this.currentShortcut = this.store.hotkeySendText;
     console.log('HotkeyService 实例化');
 
-    // 初始化热键注册
-    this.initialize();
+    // 检测是否在Tauri环境中
+    this.checkTauriEnv();
+  }
+
+  private async checkTauriEnv() {
+    try {
+      this.isTauriEnv = await isTauri();
+      console.log(`当前环境: ${this.isTauriEnv ? 'Tauri' : 'Web'}`);
+      
+      // 只在Tauri环境中初始化热键
+      if (this.isTauriEnv) {
+        this.initialize();
+      } else {
+        console.log('非Tauri环境，跳过热键初始化');
+      }
+    } catch (error) {
+      console.error('检测Tauri环境失败:', error);
+      this.isTauriEnv = false;
+    }
+  }
+
+  // 获取当前环境是否为Tauri
+  public isInTauriEnv(): boolean {
+    return this.isTauriEnv;
   }
 
   private async initialize() {
@@ -40,6 +63,11 @@ class HotkeyService {
     callback: (event: any) => Promise<void>,
     oldShortcut?: string
   ): Promise<boolean> {
+    // 非Tauri环境不注册热键
+    if (!this.isTauriEnv) {
+      return false;
+    }
+
     try {
       const alreadyRegistered = await isRegistered(newShortcut);
       if (alreadyRegistered) {
@@ -58,6 +86,11 @@ class HotkeyService {
   }
 
   async setHotkey(newShortcut: string): Promise<boolean> {
+    // 非Tauri环境不设置热键
+    if (!this.isTauriEnv) {
+      return false;
+    }
+
     const success = await this.registerShortcut(newShortcut, async (event) => {
       if (event.state === 'Pressed') {
         const clipboardText = await readText();
@@ -74,6 +107,11 @@ class HotkeyService {
   }
 
   async setScreenshotHotkey(newShortcut: string): Promise<boolean> {
+    // 非Tauri环境不设置热键
+    if (!this.isTauriEnv) {
+      return false;
+    }
+
     const success = await this.registerShortcut(newShortcut, async (event) => {
       if (event.state === 'Pressed') {
         try {
@@ -96,6 +134,8 @@ class HotkeyService {
 
   // 注销当前热键
   async unregisterCurrentHotkey(): Promise<void> {
+    if (!this.isTauriEnv) return;
+
     try {
       await unregister(this.currentShortcut);
       console.log(`已注销全局热键: ${this.currentShortcut}`);
@@ -106,6 +146,8 @@ class HotkeyService {
 
   // 注销所有热键（在应用关闭时调用）
   async unregisterAll(): Promise<void> {
+    if (!this.isTauriEnv) return;
+
     try {
       await unregisterAll();
       console.log('已注销所有全局热键。');

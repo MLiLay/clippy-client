@@ -6,8 +6,8 @@
       </button>
       <h2 class="text-xl font-semibold mb-6">Settings</h2>
       
-      <!-- 自动复制文本设置 -->
-      <div class="setting-item flex items-center justify-between mb-4">
+      <!-- 自动复制文本设置 - 仅在Tauri环境中显示 -->
+      <div v-if="isTauriEnv" class="setting-item flex items-center justify-between mb-4">
         <label for="autoCopyText" class="text-md font-medium">自动复制文本到剪切板</label>
         <input 
           type="checkbox" 
@@ -17,50 +17,57 @@
         />
       </div>
 
-      <!-- 热键设置 -->
-      <div v-for="(config, _) in hotkeyConfigs" 
-           :key="config.type" 
-           class="setting-item flex items-center justify-between mb-4 relative">
-        <div class="flex items-center space-x-2">
-          <label class="text-md">{{ config.label }}</label>
-          <font-awesome-icon 
-            v-if="config.tooltip"
-            :icon="['fas', 'circle-info']" 
-            class="w-4 h-4 text-gray-500 hover:text-gray-700 cursor-pointer"
-            @mouseenter="tooltipVisibility[config.type] = true"
-            @mouseleave="tooltipVisibility[config.type] = false"
-          />
-          <div 
-            v-if="tooltipVisibility[config.type] && config.tooltip" 
-            class="absolute ml-2 w-53 bg-gray-800 text-white text-xs rounded p-2 shadow-lg"
-            style="bottom: 80%; left: 0; margin-top: 4px; z-index: 100;"
-          >
-            {{ config.tooltip }}
+      <!-- 热键设置 - 仅在Tauri环境中显示 -->
+      <template v-if="isTauriEnv">
+        <div v-for="(config, _) in hotkeyConfigs" 
+             :key="config.type" 
+             class="setting-item flex items-center justify-between mb-4 relative">
+          <div class="flex items-center space-x-2">
+            <label class="text-md">{{ config.label }}</label>
+            <font-awesome-icon 
+              v-if="config.tooltip"
+              :icon="['fas', 'circle-info']" 
+              class="w-4 h-4 text-gray-500 hover:text-gray-700 cursor-pointer"
+              @mouseenter="tooltipVisibility[config.type] = true"
+              @mouseleave="tooltipVisibility[config.type] = false"
+            />
+            <div 
+              v-if="tooltipVisibility[config.type] && config.tooltip" 
+              class="absolute ml-2 w-53 bg-gray-800 text-white text-xs rounded p-2 shadow-lg"
+              style="bottom: 80%; left: 0; margin-top: 4px; z-index: 100;"
+            >
+              {{ config.tooltip }}
+            </div>
           </div>
+          <button
+            @click="() => startListening(config.type)"
+            class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none"
+            :disabled="isListening"
+          >
+            <span v-if="!isListening || activeConfigType !== config.type">{{ config.currentHotkey }}</span>
+            <span v-else>按下新的热键...</span>
+          </button>
+          <div v-if="errorMessages[config.type]" class="error-text">{{ errorMessages[config.type] }}</div>
         </div>
-        <button
-          @click="() => startListening(config.type)"
-          class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none"
-          :disabled="isListening"
-        >
-          <span v-if="!isListening || activeConfigType !== config.type">{{ config.currentHotkey }}</span>
-          <span v-else>按下新的热键...</span>
-        </button>
-        <div v-if="errorMessages[config.type]" class="error-text">{{ errorMessages[config.type] }}</div>
-      </div>
-            
-      <!-- 显示器选择 -->
-      <div class="setting-item flex items-center justify-between mb-4">
-        <label for="monitorSelect" class="text-md font-medium">截图显示器</label>
-        <select
-          id="monitorSelect"
-          v-model="selectedMonitor"
-          class="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option v-for="i in monitorCount" :key="i-1" :value="i-1">
-            显示器 {{ i }}
-          </option>
-        </select>
+              
+        <!-- 显示器选择 - 仅在Tauri环境中显示 -->
+        <div class="setting-item flex items-center justify-between mb-4">
+          <label for="monitorSelect" class="text-md font-medium">截图显示器</label>
+          <select
+            id="monitorSelect"
+            v-model="selectedMonitor"
+            class="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option v-for="i in monitorCount" :key="i-1" :value="i-1">
+              显示器 {{ i }}
+            </option>
+          </select>
+        </div>
+      </template>
+
+      <!-- 非Tauri环境下显示提示信息 -->
+      <div v-if="!isTauriEnv" class="setting-item text-center p-4 text-gray-600">
+        自动复制、快捷键等功能仅在桌面客户端可用
       </div>
     </div>
   </div>
@@ -94,6 +101,7 @@ export default defineComponent({
   setup(_, { emit }) {
     const store = useChatStore();
     const hotkeyService = getHotkeyService();
+    const isTauriEnv = ref(false);
     
     const isListening = ref(false);
     const activeConfigType = ref<HotkeyType | null>(null);
@@ -219,12 +227,33 @@ export default defineComponent({
 
     // 获取显示器数量
     const getMonitorCount = async () => {
-      const count = await invoke<number>('get_monitor_count');
-      monitorCount.value = count;
+      if (!isTauriEnv.value) return;
+      
+      try {
+        const count = await invoke<number>('get_monitor_count');
+        monitorCount.value = count;
+      } catch (error) {
+        console.error('获取显示器数量失败:', error);
+      }
+    };
+
+    // 检测是否在Tauri环境中
+    const checkTauriEnv = async () => {
+      try {
+        // 从HotkeyService获取Tauri环境状态
+        isTauriEnv.value = hotkeyService.isInTauriEnv();
+        console.log(`设置界面 - 当前环境: ${isTauriEnv.value ? 'Tauri' : 'Web'}`);
+      } catch (error) {
+        console.error('检测Tauri环境失败:', error);
+        isTauriEnv.value = false;
+      }
     };
 
     onMounted(() => {
-      getMonitorCount();
+      checkTauriEnv();
+      if (isTauriEnv.value) {
+        getMonitorCount();
+      }
     });
 
     onBeforeUnmount(() => {
@@ -244,6 +273,7 @@ export default defineComponent({
       errorMessages,
       selectedMonitor,
       monitorCount,
+      isTauriEnv,
     };
   },
 });
