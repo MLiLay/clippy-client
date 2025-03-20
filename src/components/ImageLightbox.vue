@@ -41,7 +41,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, watch, onUnmounted } from 'vue';
+import { defineComponent, watch, onUnmounted } from 'vue';
 
 export default defineComponent({
   name: 'ImageLightbox',
