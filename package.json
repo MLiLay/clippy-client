@@ -1,7 +1,7 @@
 {
   "name": "Clippy",
   "private": true,
-  "version": "1.0.0",
+  "version": "2025.3.20",
   "type": "module",
   "scripts": {
     "dev": "vite",

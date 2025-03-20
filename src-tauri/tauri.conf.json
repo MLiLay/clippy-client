@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Synchro",
-  "version": "1.0.0",
-  "identifier": "com.synchro.app",
+  "productName": "Clippy",
+  "version": "2025.3.20",
+  "identifier": "com.clippy.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:3000",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Synchro",
+        "title": "Clippy",
         "width": 800,
         "height": 600
       }
