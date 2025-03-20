@@ -6,7 +6,7 @@
         <span class="timestamp">{{ formattedTimestamp }}</span>
       </div>
       <div class="header-actions">
-        <span v-if="message.clipReg !== undefined" class="clipreg-badge">REG {{ message.clipReg + 1 }}</span>
+        <span v-if="message.clipReg !== undefined && message.clipReg !== null" class="clipreg-badge">REG {{ message.clipReg + 1 }}</span>
         <button 
           v-if="isTextMessage && needsExpansion" 
           class="header-button" 

@@ -31,7 +31,7 @@
             :disabled="isConnected"
             placeholder="Room ID (Only include characters)" 
             required
-            pattern="[A-Za-z0-9]+"
+            pattern="[A-Za-z0-9\-]+"
             @keyup.enter="handleConnect"
           />
         </div>
@@ -41,7 +41,7 @@
             :disabled="isConnected"
             placeholder="User ID (Only include characters)" 
             required
-            pattern="[A-Za-z0-9]+"
+            pattern="[A-Za-z0-9\-]+"
             @keyup.enter="handleConnect"
           />
         </div>
