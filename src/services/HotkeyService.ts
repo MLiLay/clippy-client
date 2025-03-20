@@ -1,6 +1,6 @@
 import { register, unregister, isRegistered, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
-import { sendTextMessage } from './SendingService';
+import SendingService from './SendingService';
 import SocketService from './SocketService';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useClipRegStore } from '../stores/useClipRegStore';
@@ -68,7 +68,7 @@ class HotkeyService {
 
     try {
       // 注册发送文本热键
-      if (!await this.setHotkey(this.currentShortcut)) {
+      if (!await this.setReadClipboardTextHotkey(this.currentShortcut)) {
         Toast.fail(`发送文本热键 "${this.currentShortcut}" 注册失败，请重启软件。`);
       }
 
@@ -115,7 +115,7 @@ class HotkeyService {
     }
   }
 
-  async setHotkey(newShortcut: string): Promise<boolean> {
+  async setReadClipboardTextHotkey(newShortcut: string): Promise<boolean> {
     return this.inTauriOrFalse(async () => {
       const success = await this.registerShortcut(
         newShortcut, 
@@ -124,7 +124,7 @@ class HotkeyService {
             try {
               const clipboardText = await readText();
               if (clipboardText) {
-                sendTextMessage(clipboardText);
+                SendingService.sendTextMessage(clipboardText);
               }
             } catch (error) {
               console.error('读取剪贴板失败:', error);
@@ -137,7 +137,7 @@ class HotkeyService {
       
       if (success) {
         this.currentShortcut = newShortcut;
-        this.settingsStore.setHotkeySendText(newShortcut);
+        this.settingsStore.setReadClipboardTextHotkeySendText(newShortcut);
       }
       
       return success;
@@ -168,7 +168,7 @@ class HotkeyService {
       );
       
       if (success) {
-        this.settingsStore.setHotkeyScreenshot(newShortcut);
+        this.settingsStore.setReadClipboardTextHotkeyScreenshot(newShortcut);
       }
       
       return success;
@@ -185,13 +185,6 @@ class HotkeyService {
     } catch (error) {
       console.error(`注销热键失败 (${shortcut}):`, error);
     }
-  }
-
-  // 注销当前热键
-  async unregisterCurrentHotkey(): Promise<void> {
-    if (!this.isTauriEnv) return;
-    await this.unregisterShortcut(this.currentShortcut);
-    console.log(`已注销全局热键: ${this.currentShortcut}`);
   }
 
   // 注销所有热键（在应用关闭时调用）
@@ -274,29 +267,11 @@ class HotkeyService {
   private generateRegisterConfigs(): RegisterConfig[] {
     const configs: RegisterConfig[] = [];
     
-    // Alt+1 到 Alt+5 (粘贴)
-    for (let i = 0; i < this.REGISTER_COUNT; i++) {
-      configs.push({
-        shortcut: `Alt+${i + 1}`,
-        operation: RegisterOperation.PASTE,
-        index: i
-      });
-    }
-    
-    // Alt+6 到 Alt+0 (保存)
-    this.SAVE_KEYS.forEach((key, i) => {
-      configs.push({
-        shortcut: `Alt+${key}`,
-        operation: RegisterOperation.SAVE,
-        index: i
-      });
-    });
-    
-    // Ctrl+Alt+1 到 Ctrl+Alt+5 (输入)
+    // Ctrl+Alt+1 到 Ctrl+Alt+5 (粘贴)
     for (let i = 0; i < this.REGISTER_COUNT; i++) {
       configs.push({
         shortcut: `Ctrl+Alt+${i + 1}`,
-        operation: RegisterOperation.TYPE,
+        operation: RegisterOperation.PASTE,
         index: i
       });
     }
@@ -309,6 +284,15 @@ class HotkeyService {
         index: i
       });
     });
+    
+    // Ctrl+Shift+Alt+1 到 Ctrl+Shift+Alt+5 (模拟输入)
+    for (let i = 0; i < this.REGISTER_COUNT; i++) {
+      configs.push({
+        shortcut: `Ctrl+Shift+Alt+${i + 1}`,
+        operation: RegisterOperation.TYPE,
+        index: i
+      });
+    }
     
     return configs;
   }

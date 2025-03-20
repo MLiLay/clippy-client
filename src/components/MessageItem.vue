@@ -1,287 +1,168 @@
 <template>
-  <div :class="['message', message.type, isSent ? 'sent' : 'received']">
+  <div :class="messageClasses">
     <div class="message-header">
       <div class="header-content">
-        <span class="sender-id">{{ isSent ? 'You' : `${message.userId}` }}</span>
+        <span class="sender-id">{{ isSent ? 'You' : message.userId }}</span>
         <span class="timestamp">{{ formattedTimestamp }}</span>
       </div>
       <div class="header-actions">
-        <!-- 展开/收起按钮 -->
+        <span v-if="message.clipReg !== undefined" class="clipreg-badge">REG {{ message.clipReg + 1 }}</span>
         <button 
-          v-if="message.type === 'text' && needsExpansion" 
+          v-if="isTextMessage && needsExpansion" 
           class="header-button" 
           @click="toggleExpand"
         >
           {{ isExpanded ? '收起' : '展开' }}
         </button>
-        <!-- 复制按钮 -->
         <button 
-          v-if="message.type === 'text'" 
+          v-if="isTextMessage" 
           class="header-button" 
           @click="handleCopy" 
           :disabled="copyStatus !== 'idle'"
           aria-label="复制消息"
         >
-          <span v-if="copyStatus === 'idle'">复制</span>
-          <span v-else-if="copyStatus === 'success'" class="success-text">已复制</span>
-          <span v-else-if="copyStatus === 'fail'" class="error-text">复制失败</span>
+          <span :class="['copy-status', copyStatus]">
+            {{ copyStatusText }}
+          </span>
         </button>
       </div>
     </div>
     <div class="message-content">
-      <div v-if="message.type === 'text'" :class="['text-content', {'collapsed': !isExpanded && needsExpansion}]">
+      <div v-if="isTextMessage" :class="['text-content', {'collapsed': !isExpanded && needsExpansion}]">
         {{ message.content }}
         <div v-if="!isExpanded && needsExpansion" class="fade-overlay"></div>
       </div>
-      <div v-else class="image-container">
+      <div v-else class="image-container" @click="openLightbox">
         <img 
           :src="message.content" 
           alt="Image" 
           class="message-image thumbnail" 
-          @click="openLightbox" 
         />
-        <div class="image-overlay" @click="openLightbox">
+        <div class="image-overlay">
           <span class="zoom-icon">🔍</span>
         </div>
       </div>
     </div>
   </div>
-  <!-- 图片浏览器 -->
-  <vue-easy-lightbox
+  <ImageLightbox
+    v-if="lightboxVisible"
     :visible="lightboxVisible"
     :imgs="lightboxImgs"
-    :index="lightboxIndex"
-    :moveDisabled="false"
-    :titleShow="false"
-    :swipeTolerance="50"
-    :teleport="'body'"
-    :zoomScale="0.5"
-    @hide="closeLightbox"
-  >
-    <!-- 自定义上一张按钮 -->
-    <template v-slot:prev-btn="{ prev }">
-      <div class="custom-nav-btn custom-prev-btn" @click="prev" title="上一张">
-        <span>&#10094;</span>
-      </div>
-    </template>
-    
-    <!-- 自定义下一张按钮 -->
-    <template v-slot:next-btn="{ next }">
-      <div class="custom-nav-btn custom-next-btn" @click="next" title="下一张">
-        <span>&#10095;</span>
-      </div>
-    </template>
-    
-    <!-- 自定义关闭按钮 -->
-    <template v-slot:close-btn="{ close }">
-      <div class="custom-close-btn" @click="close" title="关闭">
-        <span>&#10005;</span>
-      </div>
-    </template>
-    
-    <!-- 图片索引信息 -->
-    <template v-slot:footer="{ index, total }">
-      <div class="custom-footer">
-        <span>{{ index + 1 }} / {{ total }}</span>
-      </div>
-    </template>
-  </vue-easy-lightbox>
+    :current-index="lightboxIndex"
+    @close="closeLightbox"
+  />
 </template>
 
-<script lang="ts">
-import { defineComponent, computed, ref, onMounted, watch, onUnmounted } from 'vue';
-import { Message } from '../stores/useChatStore';
+<script setup lang="ts">
+import { computed, ref, onMounted } from 'vue';
+import { Message, useChatStore } from '../stores/useChatStore';
 import ClipboardService from '../services/ClipboardService';
 import { isTauri } from '@tauri-apps/api/core';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
-import { useChatStore } from '../stores/useChatStore';
-import { useConnectionStore } from '../stores/useConnectionStore';
+import ImageLightbox from './ImageLightbox.vue';
 
-dayjs.extend(utc);
+// 常量定义
+const COPY_TIMEOUT = 3000;
+const TEXT_EXPANSION_THRESHOLD = {
+  LINE_COUNT: 3,
+  CHAR_LENGTH: 150
+};
 
-export default defineComponent({
-  name: 'MessageItem',
-  props: {
-    message: {
-      type: Object as () => Message,
-      required: true,
-    },
-    userId: {
-      type: String,
-      required: true,
-    },
-  },
-  setup(props) {
-    const chatStore = useChatStore();
-    const connectionStore = useConnectionStore();
-    
-    const isSent = computed(() => props.message.userId === props.userId);
-    const formattedTimestamp = computed(() => {
-      return dayjs(props.message.timestamp)
-        .utc()
-        .utcOffset(-480) // UTC-8
-        .format('YYYY-MM-DD HH:mm:ss');
-    });
+// 类型定义
+type CopyStatus = 'idle' | 'success' | 'fail';
 
-    const copyStatus = ref<'idle' | 'success' | 'fail'>('idle');
-    const isExpanded = ref(false);
-    const needsExpansion = ref(false);
-    
-    // 图片浏览器相关状态
-    const lightboxVisible = ref(false);
-    const lightboxImgs = ref<string[]>([]);
-    const lightboxIndex = ref(0);
-    
-    // 获取所有图片消息
-    const imageMessages = computed(() => {
-      return chatStore.messages
-        .filter(msg => msg.type === 'image')
-        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    });
-    
-    // 获取当前图片在所有图片中的索引
-    const getCurrentImageIndex = () => {
-      if (props.message.type !== 'image') return -1;
-      
-      return imageMessages.value.findIndex(
-        img => img.content === props.message.content && img.timestamp === props.message.timestamp
-      );
-    };
-    
-    // 提取所有图片URL
-    const getAllImageUrls = () => {
-      return imageMessages.value.map(img => img.content);
-    };
-    
-    // 打开图片浏览器
-    const openLightbox = () => {
-      if (props.message.type === 'image') {
-        const urls = getAllImageUrls();
-        const currentIndex = getCurrentImageIndex();
-        
-        if (urls.length > 0 && currentIndex !== -1) {
-          lightboxImgs.value = urls;
-          lightboxIndex.value = currentIndex;
-          lightboxVisible.value = true;
-        }
-      }
-    };
-    
-    // 关闭图片浏览器
-    const closeLightbox = () => {
-      lightboxVisible.value = false;
-    };
-    
-    // 显示上一张图片
-    const showPrevImage = () => {
-      if (lightboxImgs.value.length > 1) {
-        lightboxIndex.value = (lightboxIndex.value - 1 + lightboxImgs.value.length) % lightboxImgs.value.length;
-      }
-    };
-    
-    // 显示下一张图片
-    const showNextImage = () => {
-      if (lightboxImgs.value.length > 1) {
-        lightboxIndex.value = (lightboxIndex.value + 1) % lightboxImgs.value.length;
-      }
-    };
-    
-    // 处理键盘事件
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!lightboxVisible.value) return;
-      
-      switch (e.key) {
-        case 'ArrowLeft':
-          showPrevImage();
-          e.preventDefault();
-          break;
-        case 'ArrowRight':
-          showNextImage();
-          e.preventDefault();
-          break;
-        case 'Escape':
-          closeLightbox();
-          e.preventDefault();
-          break;
-      }
-    };
-    
-    // 监听图片浏览器可见性变化，添加或移除键盘事件监听
-    watch(lightboxVisible, (newValue) => {
-      if (newValue) {
-        // 浏览器打开时添加键盘事件监听
-        window.addEventListener('keydown', handleKeyDown);
-      } else {
-        // 浏览器关闭时移除键盘事件监听
-        window.removeEventListener('keydown', handleKeyDown);
-      }
-    });
-    
-    // 组件卸载时清除事件监听
-    onUnmounted(() => {
-      window.removeEventListener('keydown', handleKeyDown);
-    });
-    
-    // 在组件挂载后检查消息是否需要展开按钮
-    onMounted(() => {
-      if (props.message.type === 'text') {
-        // 根据消息内容的行数判断是否需要展开按钮
-        const lineCount = (props.message.content.match(/\n/g) || []).length + 1;
-        needsExpansion.value = lineCount > 3 || props.message.content.length > 150;
-      }
-    });
+interface Props {
+  message: Message;
+  userId: string;
+}
 
-    // 切换展开/收起状态
-    const toggleExpand = () => {
-      isExpanded.value = !isExpanded.value;
-    };
+// Props 和 Store
+const props = defineProps<Props>();
+const chatStore = useChatStore();
 
-    // 检查是否在Tauri环境中
-    const handleCopy = async () => {
-      if (copyStatus.value !== 'idle') return; // 防止多次点击
+// 状态管理
+const copyStatus = ref<CopyStatus>('idle');
+const isExpanded = ref(false);
+const needsExpansion = ref(false);
+const lightboxVisible = ref(false);
+const lightboxImgs = ref<string[]>([]);
+const lightboxIndex = ref(0);
 
-      try {
-        if (isTauri()) {
-          // 在Tauri环境下使用ClipboardService
-          await ClipboardService.copyMessage(props.message);
-        } else {
-          // 在浏览器环境下使用navigator.clipboard API
-          await navigator.clipboard.writeText(props.message.content);
-        }
-        copyStatus.value = 'success';
-      } catch (error) {
-        console.error('复制失败:', error);
-        copyStatus.value = 'fail';
-      }
+// 计算属性
+const isTextMessage = computed(() => props.message.type === 'text');
+const isSent = computed(() => props.message.userId === props.userId);
+const messageClasses = computed(() => ['message', props.message.type, isSent.value ? 'sent' : 'received']);
+const copyStatusText = computed(() => ({
+  idle: '复制',
+  success: '已复制',
+  fail: '复制失败'
+}[copyStatus.value]));
 
-      setTimeout(() => {
-        copyStatus.value = 'idle';
-      }, 3000);
-    };
+const formattedTimestamp = computed(() => 
+  dayjs(props.message.timestamp)
+    .utc()
+    .utcOffset(-480)
+    .format('YYYY-MM-DD HH:mm:ss')
+);
 
-    return {
-      isSent,
-      formattedTimestamp,
-      handleCopy,
-      copyStatus,
-      isExpanded,
-      needsExpansion,
-      toggleExpand,
-      lightboxVisible,
-      lightboxImgs,
-      lightboxIndex,
-      openLightbox,
-      closeLightbox,
-      showPrevImage,
-      showNextImage
-    };
-  },
+const imageMessages = computed(() => 
+  chatStore.messages
+    .filter(msg => msg.type === 'image')
+    .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+);
+
+// 方法
+const toggleExpand = () => isExpanded.value = !isExpanded.value;
+const closeLightbox = () => lightboxVisible.value = false;
+
+function openLightbox() {
+  if (props.message.type !== 'image') return;
+  
+  const urls = imageMessages.value.map(img => img.content);
+  const currentIndex = imageMessages.value.findIndex(
+    img => img.content === props.message.content && img.timestamp === props.message.timestamp
+  );
+  
+  if (urls.length > 0 && currentIndex !== -1) {
+    lightboxImgs.value = urls;
+    lightboxIndex.value = currentIndex;
+    lightboxVisible.value = true;
+  }
+}
+
+async function handleCopy() {
+  if (copyStatus.value !== 'idle') return;
+
+  try {
+    if (isTauri()) {
+      await ClipboardService.copyMessage(props.message);
+    } else {
+      await navigator.clipboard.writeText(props.message.content);
+    }
+    copyStatus.value = 'success';
+  } catch (error) {
+    console.error('复制失败:', error);
+    copyStatus.value = 'fail';
+  }
+
+  setTimeout(() => copyStatus.value = 'idle', COPY_TIMEOUT);
+}
+
+// 生命周期钩子
+onMounted(() => {
+  if (isTextMessage.value) {
+    const lineCount = (props.message.content.match(/\n/g) || []).length + 1;
+    needsExpansion.value = lineCount > TEXT_EXPANSION_THRESHOLD.LINE_COUNT || 
+                          props.message.content.length > TEXT_EXPANSION_THRESHOLD.CHAR_LENGTH;
+  }
 });
+
+// 初始化 dayjs
+dayjs.extend(utc);
 </script>
 
 <style scoped>
-/* 基础消息样式 */
 .message {
   padding: 0;
   margin: 8px 0;
@@ -308,7 +189,6 @@ export default defineComponent({
   border-bottom-left-radius: 4px;
 }
 
-/* 消息头部 */
 .message-header {
   position: sticky;
   top: 0;
@@ -339,6 +219,10 @@ export default defineComponent({
   gap: 8px;
 }
 
+.header-actions {
+  margin-left: 16px;
+}
+
 .sender-id {
   font-weight: 600;
   color: #4a5568;
@@ -349,7 +233,6 @@ export default defineComponent({
   color: #718096;
 }
 
-/* 头部按钮 */
 .header-button {
   background: rgba(0, 0, 0, 0.05);
   border: none;
@@ -365,6 +248,15 @@ export default defineComponent({
   justify-content: center;
 }
 
+.clipreg-badge {
+  background: transparent;
+  font-size: 0.75rem;
+  color: #4a5568;
+  height: 22px;
+  display: flex;
+  align-items: center;
+}
+
 .header-button:hover:not(:disabled) {
   background: rgba(0, 0, 0, 0.1);
 }
@@ -374,16 +266,11 @@ export default defineComponent({
   cursor: not-allowed;
 }
 
-/* 消息状态文本 */
-.success-text {
-  color: #38a169;
+.copy-status {
+  &.success { color: #38a169; }
+  &.fail { color: #e53e3e; }
 }
 
-.error-text {
-  color: #e53e3e;
-}
-
-/* 消息内容区 */
 .message-content {
   font-size: 1rem;
   color: #333;
@@ -397,7 +284,6 @@ export default defineComponent({
   position: relative;
 }
 
-/* 文本折叠相关 */
 .text-content.collapsed {
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -425,7 +311,6 @@ export default defineComponent({
   --message-bg-color: #f0f2f5;
 }
 
-/* 图片相关 */
 .image-container {
   position: relative;
   width: 100%;
@@ -433,6 +318,7 @@ export default defineComponent({
   margin: 0 auto;
   overflow: hidden;
   border-radius: 8px;
+  cursor: pointer;
 }
 
 .message-image.thumbnail {
@@ -446,20 +332,16 @@ export default defineComponent({
 
 .image-overlay {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   background: rgba(0, 0, 0, 0.3);
   opacity: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: opacity 0.05s;
-  cursor: pointer;
 }
 
-.image-overlay:hover {
+.image-container:hover .image-overlay {
   opacity: 1;
 }
 
@@ -469,117 +351,15 @@ export default defineComponent({
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
-/* 图片浏览器按钮通用样式 */
-.custom-nav-btn, .custom-close-btn {
-  position: absolute;
-  background: rgba(0, 0, 0, 0.3);
-  color: white;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 18px;
-  z-index: 1001;
-  transition: background 0.05s;
-}
-
-.custom-nav-btn:hover, .custom-close-btn:hover {
-  background: rgba(0, 0, 0, 0.6);
-}
-
-.custom-nav-btn {
-  top: 50%;
-  transform: translateY(-50%);
-}
-
-.custom-prev-btn {
-  left: 20px;
-}
-
-.custom-next-btn {
-  right: 20px;
-}
-
-.custom-close-btn {
-  top: 20px;
-  right: 20px;
-}
-
-.custom-footer {
-  position: absolute;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.5);
-  color: white;
-  padding: 5px 15px;
-  border-radius: 15px;
-  font-size: 14px;
-}
-
-/* 确保图片浏览器中的图片显示正确 */
-:deep(.vel-img) {
-  max-width: 90vw !important;
-  max-height: 90vh !important;
-  object-fit: contain !important;
-}
-
-/* 响应式设计 */
 @media (max-width: 600px) {
-  .message {
-    max-width: 90%;
-  }
-
-  .message-header {
-    padding: 6px 10px;
-    font-size: 0.8rem;
-  }
-
-  .message-content {
-    font-size: 0.95rem;
-    padding: 8px 10px 10px;
-  }
-  
-  .header-button {
-    padding: 1px 6px;
-    font-size: 0.7rem;
-    height: 20px;
-  }
-  
-  .sender-id {
-    font-size: 0.8rem;
-  }
-  
-  .timestamp {
-    font-size: 0.7rem;
-  }
-  
-  .custom-nav-btn, .custom-close-btn {
-    width: 36px;
-    height: 36px;
-    font-size: 16px;
-  }
-  
-  .custom-footer {
-    padding: 4px 12px;
-    font-size: 12px;
-  }
-  
-  .image-container {
-    max-width: 300px;
-  }
-  
-  .message-image.thumbnail {
-    max-width: 300px;
-    max-height: 240px;
-  }
-  
-  .zoom-icon {
-    font-size: 18px;
-  }
+  .message { max-width: 90%; }
+  .message-header { padding: 6px 10px; font-size: 0.8rem; }
+  .message-content { font-size: 0.95rem; padding: 8px 10px 10px; }
+  .header-button { padding: 1px 6px; font-size: 0.7rem; height: 20px; }
+  .sender-id { font-size: 0.8rem; }
+  .timestamp { font-size: 0.7rem; }
+  .image-container { max-width: 300px; }
+  .message-image.thumbnail { max-width: 300px; max-height: 240px; }
+  .zoom-icon { font-size: 18px; }
 }
 </style>
-

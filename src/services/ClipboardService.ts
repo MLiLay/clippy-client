@@ -15,7 +15,7 @@ class ClipboardService {
     }
   }
 
-  private async copyText(text: string): Promise<void> {
+  async copyText(text: string): Promise<void> {
     try {
       await writeText(text);
       console.log('文本消息已复制到剪贴板。');
@@ -33,24 +33,17 @@ class ClipboardService {
   async convertImageToBase64(file: File): Promise<string> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        resolve(result);
-      };
+      reader.onload = () => resolve(reader.result as string);
       reader.onerror = (error) => reject(error);
       reader.readAsDataURL(file);
     });
   }
 
-  private async copyImage(imageBase64: string): Promise<void> {
+  async copyImage(imageBase64: string): Promise<void> {
     try {
-      // 将 Base64 字符串转换为 Uint8Array
       const response = await fetch(imageBase64);
-      const blob = await response.blob();
-      const arrayBuffer = await blob.arrayBuffer();
-      const uint8Array = new Uint8Array(arrayBuffer);
-
-      await writeImage(uint8Array);
+      const arrayBuffer = await response.blob().then(blob => blob.arrayBuffer());
+      await writeImage(new Uint8Array(arrayBuffer));
       console.log('图片已复制到剪贴板。');
     } catch (error) {
       console.error('复制图片失败:', error);

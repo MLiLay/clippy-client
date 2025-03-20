@@ -21,11 +21,11 @@ export const useSettingsStore = defineStore('settings', () => {
     autoCopyImage.value = value;
   };
 
-  const setHotkeySendText = (newHotkey: string) => {
+  const setReadClipboardTextHotkeySendText = (newHotkey: string) => {
     hotkeySendText.value = newHotkey;
   };
 
-  const setHotkeyScreenshot = (newHotkey: string) => {
+  const setReadClipboardTextHotkeyScreenshot = (newHotkey: string) => {
     hotkeyScreenshot.value = newHotkey;
   };
 
@@ -41,8 +41,8 @@ export const useSettingsStore = defineStore('settings', () => {
     selectedMonitor,
     setAutoCopyText,
     setAutoCopyImage,
-    setHotkeySendText,
-    setHotkeyScreenshot,
+    setReadClipboardTextHotkeySendText,
+    setReadClipboardTextHotkeyScreenshot,
     setSelectedMonitor,
   };
 }); 

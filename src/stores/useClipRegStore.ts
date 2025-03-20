@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia';
 
-// 剪切板寄存器存储
 export const useClipRegStore = defineStore('clipReg', {
   state: () => ({
     // 5个剪切板寄存器，索引0-4对应寄存器1-5

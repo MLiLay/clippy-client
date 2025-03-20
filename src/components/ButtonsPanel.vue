@@ -1,37 +1,43 @@
 <template>
-  <div class="buttons-panel flex flex-col items-center space-y-2 ml-2">
+  <div class="flex flex-col items-center space-y-2 ml-2">
     <!-- 网络状态按钮 -->
-    <button @click="openRegisterModal" class="icon-button" aria-label="网络状态">
-      <font-awesome-icon :icon="['fas', 'globe']" :class="['w-6 h-6', isConnected ? 'text-green-600 hover:text-green-700' : 'text-red-500 hover:text-red-600']" />
+    <button @click="$emit('openRegisterModal')" class="bg-transparent border-none cursor-pointer rounded-full transition-colors p-1 hover:bg-gray-100" aria-label="网络状态">
+      <font-awesome-icon :icon="['fas', 'globe']" class="w-6 h-6" :class="isConnected ? 'text-green-600 hover:text-green-700' : 'text-red-500 hover:text-red-600'" />
     </button>
 
     <!-- 设置按钮 -->
-    <button @click="toggleSettingsModal" class="icon-button" aria-label="设置">
+    <button @click="$emit('toggleSettingsModal')" class="bg-transparent border-none cursor-pointer rounded-full transition-colors p-1 hover:bg-gray-100" aria-label="设置">
       <font-awesome-icon :icon="['fas', 'gear']" class="w-6 h-6 text-gray-500 hover:text-gray-700" />
     </button>
 
     <!-- 发送图片按钮 -->
-    <button @click="triggerImageUpload" class="icon-button" aria-label="发送图片">
+    <button @click="$emit('triggerImageUpload')" class="bg-transparent border-none cursor-pointer rounded-full transition-colors p-1 hover:bg-gray-100" aria-label="发送图片">
       <font-awesome-icon :icon="['fas', 'image']" class="w-6 h-6 text-gray-500 hover:text-gray-700" />
     </button>
 
     <!-- 发送文本按钮组 -->
-    <div class="send-button-group relative flex items-center">
+    <div class="relative flex items-center">
       <!-- 发送文本按钮 -->
-      <button @click="sendText" class="icon-button" aria-label="发送文本">
+      <button @click="$emit('sendText')" class="bg-transparent border-none cursor-pointer rounded-full transition-colors p-1 hover:bg-gray-100" aria-label="发送文本">
         <font-awesome-icon :icon="['fas', 'paper-plane']" class="w-6 h-6 text-blue-500 hover:text-blue-700" />
       </button>
       
       <!-- 下拉按钮 -->
-      <div class="dropdown-wrapper relative ml-1">
-        <button @click.stop="toggleDropdown" class="dropdown-toggle-btn bg-gray-200 rounded-full p-1 flex items-center justify-center" aria-label="发送选项">
+      <div class="relative ml-1">
+        <button 
+          @click.stop="showDropdown = !showDropdown" 
+          class="bg-gray-200 rounded-full p-1 flex items-center justify-center w-[18px] h-[18px] cursor-pointer transition-colors hover:bg-gray-300" 
+          aria-label="发送选项"
+        >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 text-gray-600" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
           </svg>
         </button>
         
-        <!-- 下拉菜单 -->
-        <div v-if="showDropdown" class="dropdown-menu absolute z-10 right-0 bottom-full mb-1 bg-white border border-gray-200 rounded-md shadow-lg py-1 w-32">
+        <div 
+          v-if="showDropdown" 
+          class="absolute z-10 right-0 bottom-full mb-1 bg-white border border-gray-200 rounded-md shadow-lg py-1 w-32 min-w-[120px] max-h-[200px] overflow-y-auto"
+        >
           <div class="text-xs text-gray-500 px-4 py-1 border-b border-gray-100">剪切板寄存器</div>
           <div class="grid grid-cols-5 gap-1 p-2">
             <button 
@@ -49,71 +55,36 @@
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent, ref, onMounted, onUnmounted } from 'vue';
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue';
 
-export default defineComponent({
-  name: 'ButtonsPanel',
-  props: {
-    isConnected: {
-      type: Boolean,
-      required: true,
-    },
-  },
-  emits: ['triggerImageUpload', 'sendText', 'toggleSettingsModal', 'openRegisterModal'],
-  setup(_, { emit }) {
-    const showDropdown = ref(false);
-    
-    const triggerImageUpload = () => {
-      emit('triggerImageUpload');
-    };
-
-    const sendText = () => {
-      emit('sendText');
-    };
-    
-    const sendTextToRegister = (registerIndex: number) => {
-      emit('sendText', registerIndex);
-      showDropdown.value = false;
-    };
-    
-    const toggleDropdown = (event: Event) => {
-      event.stopPropagation();
-      showDropdown.value = !showDropdown.value;
-    };
-    
-    const closeDropdown = (event: MouseEvent) => {
-      showDropdown.value = false;
-    };
-    
-    // 添加和移除点击外部关闭下拉菜单的事件
-    onMounted(() => {
-      document.addEventListener('click', closeDropdown);
-    });
-    
-    onUnmounted(() => {
-      document.removeEventListener('click', closeDropdown);
-    });
-
-    const toggleSettingsModal = () => {
-      emit('toggleSettingsModal');
-    };
-
-    const openRegisterModal = () => {
-      emit('openRegisterModal');
-    };
-
-    return {
-      triggerImageUpload,
-      sendText,
-      sendTextToRegister,
-      showDropdown,
-      toggleDropdown,
-      toggleSettingsModal,
-      openRegisterModal,
-    };
-  },
+// 定义组件属性
+defineProps({
+  isConnected: {
+    type: Boolean,
+    required: true,
+  }
 });
+
+// 定义组件事件
+const emit = defineEmits(['triggerImageUpload', 'sendText', 'toggleSettingsModal', 'openRegisterModal']);
+
+const showDropdown = ref(false);
+
+// 发送文本到指定寄存器
+const sendTextToRegister = (registerIndex: number) => {
+  emit('sendText', registerIndex);
+  showDropdown.value = false;
+};
+
+// 点击外部关闭下拉菜单
+const closeDropdown = () => {
+  showDropdown.value = false;
+};
+
+// 生命周期钩子
+onMounted(() => document.addEventListener('click', closeDropdown));
+onUnmounted(() => document.removeEventListener('click', closeDropdown));
 </script>
 
 <style scoped>

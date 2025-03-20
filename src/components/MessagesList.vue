@@ -1,66 +1,42 @@
 <template>
-  <div class="messages-list-container flex flex-col space-y-4" ref="messagesContainer">
+  <div class="messages-list-container" ref="messagesContainer">
     <MessageItem
-      v-for="(message, index) in sortedMessages"
-      :key="index"
+      v-for="message in sortedMessages"
+      :key="`${message.userId}-${message.timestamp}`"
       :message="message"
       :userId="userId"
     />
-    <!-- 滚动锚点 -->
     <div ref="scrollAnchor"></div>
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent, computed, onMounted, watch, ref, nextTick } from 'vue';
+<script setup lang="ts">
+import { computed, onMounted, watch, ref, nextTick } from 'vue';
 import { useChatStore } from '../stores/useChatStore';
 import { useConnectionStore } from '../stores/useConnectionStore';
-import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc';
 import MessageItem from './MessageItem.vue';
 
-dayjs.extend(utc);
+const chatStore = useChatStore();
+const connectionStore = useConnectionStore();
+const messagesContainer = ref<HTMLDivElement | null>(null);
+const scrollAnchor = ref<HTMLDivElement | null>(null);
 
-export default defineComponent({
-  name: 'MessagesList',
-  components: {
-    MessageItem,
-  },
-  setup() {
-    const chatStore = useChatStore();
-    const connectionStore = useConnectionStore();
-    const messagesContainer = ref<HTMLDivElement | null>(null);
-    const scrollAnchor = ref<HTMLDivElement | null>(null);
+const sortedMessages = computed(() => 
+  [...chatStore.messages].sort((a, b) => 
+    new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+  )
+);
 
-    const sortedMessages = computed(() => {
-      return [...chatStore.messages].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    });
+const userId = computed(() => connectionStore.userId);
 
-    const userId = computed(() => connectionStore.userId);
+const scrollToBottom = async () => {
+  await nextTick();
+  scrollAnchor.value?.scrollIntoView({ behavior: 'smooth' });
+};
 
-    const scrollToBottom = async () => {
-      await nextTick();
-      if (scrollAnchor.value) {
-        scrollAnchor.value.scrollIntoView({ behavior: 'smooth' });
-      }
-    };
+onMounted(scrollToBottom);
 
-    onMounted(() => {
-      scrollToBottom();
-    });
-
-    watch(sortedMessages, () => {
-      scrollToBottom();
-    });
-
-    return {
-      sortedMessages,
-      userId,
-      messagesContainer,
-      scrollAnchor,
-    };
-  },
-});
+watch(() => chatStore.messages.length, scrollToBottom);
 </script>
 
 <style scoped>
@@ -68,7 +44,7 @@ export default defineComponent({
   display: flex;
   flex-direction: column;
   height: 100%;
-  overflow-y: auto; /* 确保滚动 */
+  overflow-y: auto;
 }
 </style>
 

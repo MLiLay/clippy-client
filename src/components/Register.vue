@@ -2,146 +2,172 @@
   <div class="modal-overlay" @click.self="close">
     <div class="modal-content">
       <button class="close-icon" @click="close" aria-label="关闭">
-        <font-awesome-icon :icon="['fas', 'xmark']" class="w-5 h-5 text-gray-700 hover:text-gray-900" />
+        <font-awesome-icon :icon="['fas', 'xmark']" />
       </button>
       <h2>Connect</h2>
-      <input 
-        v-model="serverAddress" 
-        :disabled="isConnected"
-        placeholder="Server Address (e.g., example.com)" 
-      />
-      <input 
-        v-model="serverPort" 
-        :disabled="isConnected"
-        placeholder="Server Port (e.g., 8989)" 
-      />
-      <input 
-        v-model="room" 
-        :disabled="isConnected"
-        placeholder="Room ID (Only include characters)" 
-      />
-      <input 
-        v-model="userId" 
-        :disabled="isConnected"
-        placeholder="User ID (Only include characters)" 
-      />
-      <div class="buttons">
-        <button
-          @click="handleConnect"
-          :disabled="isConnected"
-          :class="['connect-button', { disabled: isConnected }]"
-          :aria-disabled="isConnected"
-        >
-          Connect
-        </button>
-        <button
-          @click="handleDisconnect"
-          :disabled="!isConnected"
-          :class="['disconnect-button', { disabled: !isConnected }]"
-          :aria-disabled="!isConnected"
-        >
-          Disconnect
-        </button>
-      </div>
+      
+      <form @submit.prevent="handleConnect">
+        <div class="form-group">
+          <input 
+            v-model="form.serverAddress" 
+            :disabled="isConnected"
+            placeholder="Server Address (e.g., example.com)" 
+            required
+            @keyup.enter="handleConnect"
+          />
+        </div>
+        <div class="form-group">
+          <input 
+            v-model="form.serverPort" 
+            :disabled="isConnected"
+            placeholder="Server Port (e.g., 8989)" 
+            required
+            @keyup.enter="handleConnect"
+          />
+        </div>
+        <div class="form-group">
+          <input 
+            v-model="form.room" 
+            :disabled="isConnected"
+            placeholder="Room ID (Only include characters)" 
+            required
+            pattern="[A-Za-z0-9]+"
+            @keyup.enter="handleConnect"
+          />
+        </div>
+        <div class="form-group">
+          <input 
+            v-model="form.userId" 
+            :disabled="isConnected"
+            placeholder="User ID (Only include characters)" 
+            required
+            pattern="[A-Za-z0-9]+"
+            @keyup.enter="handleConnect"
+          />
+        </div>
+        
+        <div class="buttons">
+          <button
+            type="submit"
+            :disabled="isConnected"
+            :class="['connect-button', { disabled: isConnected }]"
+          >
+            Connect
+          </button>
+          <button
+            type="button"
+            @click="handleDisconnect"
+            :disabled="!isConnected"
+            :class="['disconnect-button', { disabled: !isConnected, active: isConnected }]"
+          >
+            Disconnect
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent, computed, onMounted } from 'vue';
-import { useChatStore } from '../stores/useChatStore';
+<script setup lang="ts">
+import { computed, reactive, onMounted } from 'vue';
 import { useConnectionStore } from '../stores/useConnectionStore';
 import SocketService from '../services/SocketService';
 import { Toast } from 'vant';
 
-export default defineComponent({
-  name: 'Register',
-  emits: ['close'],
-  setup(_, { emit }) {
-    const chatStore = useChatStore();
-    const connectionStore = useConnectionStore();
+interface FormState {
+  serverAddress: string;
+  serverPort: string;
+  room: string;
+  userId: string;
+}
 
-    const serverAddress = computed({
-      get: () => connectionStore.serverAddress,
-      set: (value: string) => connectionStore.setServerAddress(value),
+const emit = defineEmits<{
+  (e: 'close'): void;
+}>();
+
+const connectionStore = useConnectionStore();
+
+const form = reactive<FormState>({
+  serverAddress: connectionStore.serverAddress,
+  serverPort: connectionStore.serverPort || '8989',
+  room: connectionStore.room,
+  userId: connectionStore.userId
+});
+
+const isConnected = computed(() => connectionStore.isConnected);
+
+const validateForm = (): boolean => {
+  const { serverAddress, serverPort, room, userId } = form;
+  
+  if (!serverAddress.trim() || !serverPort.trim()) {
+    Toast.fail('请输入服务器地址和端口');
+    return false;
+  }
+
+  if (!room.trim() || !userId.trim()) {
+    Toast.fail('请输入房间ID和用户ID');
+    return false;
+  }
+
+  return true;
+};
+
+const updateConnectionStore = () => {
+  const { serverAddress, serverPort, room, userId } = form;
+  connectionStore.setServerAddress(serverAddress.trim());
+  connectionStore.setServerPort(serverPort.trim());
+  connectionStore.setRoom(room.trim());
+  connectionStore.setUserId(userId.trim());
+};
+
+const handleConnect = async () => {
+  if (!validateForm()) return;
+  
+  updateConnectionStore();
+  
+  Toast.loading({
+    message: '正在连接服务器...',
+    forbidClick: true,
+    duration: 0
+  });
+
+  try {
+    const url = `http://${form.serverAddress.trim()}:${form.serverPort.trim()}`;
+    await SocketService.connect(url);
+    await SocketService.register(form.room.trim(), form.userId.trim());
+  } catch (error) {
+    Toast.fail('连接失败，请重试');
+    console.error('连接失败:', error);
+  }
+};
+
+const handleDisconnect = async () => {
+  try {
+    Toast.loading({
+      message: '正在断开连接...',
+      forbidClick: true,
+      duration: 1000
     });
+    await SocketService.disconnect();
+  } catch (error) {
+    console.error('断开连接失败:', error);
+    Toast.fail('断开连接失败，请重试');
+  }
+};
 
-    const serverPort = computed({
-      get: () => connectionStore.serverPort,
-      set: (value: string) => connectionStore.setServerPort(value),
-    });
+const close = () => emit('close');
 
-    const room = computed({
-      get: () => connectionStore.room,
-      set: (value: string) => connectionStore.setRoom(value),
-    });
-
-    const userId = computed({
-      get: () => connectionStore.userId,
-      set: (value: string) => connectionStore.setUserId(value),
-    });
-
-    const isConnected = computed(() => connectionStore.isConnected);
-
-    const handleConnect = () => {
-      const address = serverAddress.value.trim();
-      const port = serverPort.value.trim();
-
-      if (!address || !port) {
-        Toast.fail('Please enter both Server Address and Server Port.');
-        return;
-      }
-
-      if (connectionStore.room.trim() && connectionStore.userId.trim()) {
-        Toast.loading({
-          message: 'Connecting to server...',
-          forbidClick: true,
-          duration: 0
-        });
-        const url = `http://${address}:${port}`;
-        SocketService.connect(url);
-        SocketService.register(connectionStore.room, connectionStore.userId);
-      } else {
-        Toast.fail('Please enter both Room ID and User ID.');
-      }
-    };
-
-    const handleDisconnect = () => {
-      SocketService.disconnect();
-    };
-
-    const close = () => {
-      emit('close');
-    };
-
-    onMounted(() => {
-      // 如果store中没有端口，设置默认端口
-      if (!connectionStore.serverPort) {
-        connectionStore.setServerPort('8989');
-      }
-    });
-
-    return {
-      serverAddress,
-      serverPort,
-      room,
-      userId,
-      isConnected,
-      handleConnect,
-      handleDisconnect,
-      close,
-    };
-  },
+onMounted(() => {
+  if (!form.serverPort) {
+    form.serverPort = '8989';
+  }
 });
 </script>
 
 <style scoped>
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   background-color: rgba(0, 0, 0, 0.5);
   display: flex;
   justify-content: center;
@@ -150,19 +176,18 @@ export default defineComponent({
 }
 
 .modal-content {
-  position: relative; /* 为绝对定位的关闭按钮提供参照 */
+  position: relative;
   background-color: white;
-  padding: 30px;
+  padding: 2rem;
   border-radius: 1.5rem;
-  width: 400px;
-  max-width: 90%;
+  width: min(400px, 90%);
   box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
 }
 
 .close-icon {
   position: absolute;
-  top: 15px;
-  right: 15px;
+  top: 1rem;
+  right: 1rem;
   background: none;
   border: none;
   cursor: pointer;
@@ -174,39 +199,50 @@ export default defineComponent({
   color: #000;
 }
 
-.modal-content h2 {
-  margin-top: 0;
-  margin-bottom: 20px;
+h2 {
+  margin: 0 0 1.25rem;
 }
 
-.modal-content input {
+.form-group {
+  margin-bottom: 1rem;
+}
+
+input {
   width: 100%;
-  padding: 10px;
-  margin-bottom: 15px;
+  padding: 0.625rem;
   border: 1px solid #ccc;
   border-radius: 0.75rem;
-  font-size: 14px;
+  font-size: 0.875rem;
+  transition: border-color 0.3s;
 }
 
-.modal-content input:disabled {
+input:focus {
+  outline: none;
+  border-color: #007bff;
+}
+
+input:disabled {
   background-color: #f5f5f5;
   cursor: not-allowed;
 }
 
 .buttons {
   display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
+  gap: 0.625rem;
+  margin-top: 1.5rem;
+}
+
+button {
+  flex: 1;
+  padding: 0.625rem 1.25rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.3s;
 }
 
 .connect-button {
-  flex: 1;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 0.75rem;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.3s;
   background-color: #007bff;
   color: white;
 }
@@ -216,13 +252,6 @@ export default defineComponent({
 }
 
 .disconnect-button {
-  flex: 1;
-  padding: 10px 20px;
-  border: none;
-  border-radius: 0.75rem;
-  font-size: 14px;
-  cursor: pointer;
-  transition: background-color 0.3s;
   background-color: #dc3545;
   color: white;
 }
@@ -231,8 +260,7 @@ export default defineComponent({
   background-color: #c82333;
 }
 
-.connect-button.disabled,
-.disconnect-button.disabled {
+.disabled {
   background-color: #ccc;
   cursor: not-allowed;
 }

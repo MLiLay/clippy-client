@@ -24,15 +24,14 @@
           <font-awesome-icon 
             :icon="['fas', 'circle-info']" 
             class="w-4 h-4 text-gray-500 hover:text-gray-700 cursor-pointer"
-            @mouseenter="clipRegTooltipVisible = true"
-            @mouseleave="clipRegTooltipVisible = false"
+            @mouseenter="tooltipState.clipReg = true"
+            @mouseleave="tooltipState.clipReg = false"
           />
           <div 
-            v-if="clipRegTooltipVisible" 
-            class="absolute ml-2 w-64 bg-gray-800 text-white text-xs rounded p-2 shadow-lg"
-            style="bottom: 80%; left: 0; margin-top: 4px; z-index: 100;"
+            v-if="tooltipState.clipReg" 
+            class="tooltip"
           >
-            5个剪切板寄存器，Alt+1~5粘贴，Alt+6~0保存(对应Ctrl+Alt+1~5输入)，Ctrl+Alt+1~5输入
+            5个剪切板寄存器，Ctrl+Alt+1~5取出寄存器并粘贴，Ctrl+Alt+6~0写入寄存器(对应Ctrl+Alt+1~5输入)，Ctrl+Alt+Shift+1~5模拟输入
           </div>
         </div>
         <input 
@@ -50,13 +49,12 @@
           <font-awesome-icon 
             :icon="['fas', 'circle-info']" 
             class="w-4 h-4 text-gray-500 hover:text-gray-700 cursor-pointer"
-            @mouseenter="clipRegSyncTooltipVisible = true"
-            @mouseleave="clipRegSyncTooltipVisible = false"
+            @mouseenter="tooltipState.clipRegSync = true"
+            @mouseleave="tooltipState.clipRegSync = false"
           />
           <div 
-            v-if="clipRegSyncTooltipVisible" 
-            class="absolute ml-2 w-64 bg-gray-800 text-white text-xs rounded p-2 shadow-lg"
-            style="bottom: 80%; left: 0; margin-top: 4px; z-index: 100;"
+            v-if="tooltipState.clipRegSync" 
+            class="tooltip"
           >
             将剪切板寄存器内容同步到其他设备，同时在接收端自动存储
           </div>
@@ -80,20 +78,19 @@
               v-if="config.tooltip"
               :icon="['fas', 'circle-info']" 
               class="w-4 h-4 text-gray-500 hover:text-gray-700 cursor-pointer"
-              @mouseenter="tooltipVisibility[config.type] = true"
-              @mouseleave="tooltipVisibility[config.type] = false"
+              @mouseenter="tooltipState[config.type] = true"
+              @mouseleave="tooltipState[config.type] = false"
             />
             <div 
-              v-if="tooltipVisibility[config.type] && config.tooltip" 
-              class="absolute ml-2 w-53 bg-gray-800 text-white text-xs rounded p-2 shadow-lg"
-              style="bottom: 80%; left: 0; margin-top: 4px; z-index: 100;"
+              v-if="tooltipState[config.type] && config.tooltip" 
+              class="tooltip"
             >
               {{ config.tooltip }}
             </div>
           </div>
           <button
             @click="() => startListening(config.type)"
-            class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none"
+            class="hotkey-button"
             :disabled="isListening"
           >
             <span v-if="!isListening || activeConfigType !== config.type">{{ config.currentHotkey }}</span>
@@ -108,7 +105,7 @@
           <select
             id="monitorSelect"
             v-model="selectedMonitor"
-            class="px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            class="monitor-select"
           >
             <option v-for="i in monitorCount" :key="i-1" :value="i-1">
               显示器 {{ i }}
@@ -131,11 +128,10 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useClipRegStore } from '../stores/useClipRegStore';
 import { getHotkeyService } from '../services/HotkeyService';
 import { Toast } from 'vant';
-import { invoke } from '@tauri-apps/api/core'; // 用于调用 Tauri 命令
+import { invoke } from '@tauri-apps/api/core';
 
+// 类型定义
 type HotkeyType = 'send' | 'screenshot';
-
-// 明确定义热键类型
 const VALID_MODIFIERS = ['Control', 'Alt', 'Shift', 'Meta'] as const;
 type Modifier = typeof VALID_MODIFIERS[number];
 
@@ -145,83 +141,95 @@ interface HotkeyConfig {
   tooltip?: string;
   currentHotkey: string;
   setter: (shortcut: string) => Promise<boolean>;
-  errorMessage?: string;
 }
+
+interface TooltipState {
+  clipReg: boolean;
+  clipRegSync: boolean;
+  [key: string]: boolean;
+}
+
+// 常量配置
+const HOTKEY_CONFIGS: Omit<HotkeyConfig, 'currentHotkey' | 'setter'>[] = [
+  {
+    type: 'send',
+    label: '发送剪切板文本',
+    tooltip: '发送剪切板文本内容，非文本不发送',
+  },
+  {
+    type: 'screenshot',
+    label: '截取全屏并发送',
+  },
+];
 
 export default defineComponent({
   name: 'Settings',
   emits: ['close'],
   setup(_, { emit }) {
+    // 状态管理
     const settingsStore = useSettingsStore();
     const clipRegStore = useClipRegStore();
     const hotkeyService = getHotkeyService();
-    const isTauriEnv = ref(false);
     
+    // 响应式状态
+    const isTauriEnv = ref(false);
     const isListening = ref(false);
     const activeConfigType = ref<HotkeyType | null>(null);
-    const tooltipVisibility = ref<Record<HotkeyType, boolean>>({
+    const monitorCount = ref(1);
+    const tooltipState = ref<TooltipState>({
+      clipReg: false,
+      clipRegSync: false,
       send: false,
-      screenshot: false
+      screenshot: false,
     });
     const errorMessages = ref<Record<HotkeyType, string>>({
       send: '',
-      screenshot: ''
-    });
-    
-    // 剪切板寄存器功能相关
-    const clipRegTooltipVisible = ref(false);
-    const clipRegEnabled = computed({
-      get: () => clipRegStore.enabled,
-      set: async (value: boolean) => {
-        await hotkeyService.setClipRegEnabled(value);
-        if (value) {
-          Toast.success('剪切板寄存器功能已启用');
-        } else {
-          Toast.success('剪切板寄存器功能已禁用');
-        }
-      }
+      screenshot: '',
     });
 
-    // 剪切板寄存器同步相关
-    const clipRegSyncTooltipVisible = ref(false);
-    const clipRegSyncEnabled = computed({
-      get: () => clipRegStore.syncEnabled,
-      set: async (value: boolean) => {
-        await hotkeyService.setClipRegSyncEnabled(value);
-        if (value) {
-          Toast.success('剪切板寄存器同步已启用');
-        } else {
-          Toast.success('剪切板寄存器同步已禁用');
-        }
-      }
-    });
-
-    // 基础计算属性
+    // 计算属性
     const autoCopyText = computed({
       get: () => settingsStore.autoCopyText,
       set: (value: boolean) => settingsStore.setAutoCopyText(value),
     });
 
-    const formatHotkey = (hotkey: string) => {
-      return hotkey.replace(/Control/g, 'Ctrl');
-    };
+    const clipRegEnabled = computed({
+      get: () => clipRegStore.enabled,
+      set: async (value: boolean) => {
+        await hotkeyService.setClipRegEnabled(value);
+        Toast.success(`剪切板寄存器功能已${value ? '启用' : '禁用'}`);
+      }
+    });
 
-    // 热键配置
-    const hotkeyConfigs = computed<HotkeyConfig[]>(() => [
-      {
-        type: 'send',
-        label: '发送剪切板文本',
-        tooltip: '发送剪切板文本内容，非文本不发送',
-        currentHotkey: formatHotkey(settingsStore.hotkeySendText),
-        setter: hotkeyService.setHotkey.bind(hotkeyService),
-      },
-      {
-        type: 'screenshot',
-        label: '截取全屏并发送',
-        currentHotkey: formatHotkey(settingsStore.hotkeyScreenshot),
-        setter: hotkeyService.setScreenshotHotkey.bind(hotkeyService),
-      },
-    ]);
+    const clipRegSyncEnabled = computed({
+      get: () => clipRegStore.syncEnabled,
+      set: async (value: boolean) => {
+        await hotkeyService.setClipRegSyncEnabled(value);
+        Toast.success(`剪切板寄存器同步已${value ? '启用' : '禁用'}`);
+      }
+    });
+
+    const selectedMonitor = computed({
+      get: () => settingsStore.selectedMonitor,
+      set: (value: number) => settingsStore.setSelectedMonitor(value)
+    });
+
+    const hotkeyConfigs = computed<HotkeyConfig[]>(() => 
+      HOTKEY_CONFIGS.map(config => ({
+        ...config,
+        currentHotkey: formatHotkey(
+          config.type === 'send' 
+            ? settingsStore.hotkeySendText 
+            : settingsStore.hotkeyScreenshot
+        ),
+        setter: config.type === 'send'
+          ? hotkeyService.setReadClipboardTextHotkey.bind(hotkeyService)
+          : hotkeyService.setScreenshotHotkey.bind(hotkeyService),
+      }))
+    );
+
+    // 工具函数
+    const formatHotkey = (hotkey: string) => hotkey.replace(/Control/g, 'Ctrl');
 
     const validateHotkey = (keys: string[]): { isValid: boolean; message?: string } => {
       const modifiers = keys.filter(k => VALID_MODIFIERS.includes(k as Modifier));
@@ -238,7 +246,7 @@ export default defineComponent({
       return { isValid: true };
     };
 
-    // 统一的热键设置处理函数
+    // 事件处理
     const startListening = async (type: HotkeyType) => {
       if (isListening.value) return;
       
@@ -297,17 +305,17 @@ export default defineComponent({
       window.addEventListener('keydown', handleKeyDown);
     };
 
-    const close = () => emit('close');
+    // 生命周期钩子
+    const checkTauriEnv = async () => {
+      try {
+        isTauriEnv.value = hotkeyService.isInTauriEnv();
+        console.log(`设置界面 - 当前环境: ${isTauriEnv.value ? 'Tauri' : 'Web'}`);
+      } catch (error) {
+        console.error('检测Tauri环境失败:', error);
+        isTauriEnv.value = false;
+      }
+    };
 
-    const monitorCount = ref(1); // 显示器数量
-    
-    // 选中的显示器
-    const selectedMonitor = computed({
-      get: () => settingsStore.selectedMonitor,
-      set: (value: number) => settingsStore.setSelectedMonitor(value)
-    });
-
-    // 获取显示器数量
     const getMonitorCount = async () => {
       if (!isTauriEnv.value) return;
       
@@ -316,18 +324,6 @@ export default defineComponent({
         monitorCount.value = count;
       } catch (error) {
         console.error('获取显示器数量失败:', error);
-      }
-    };
-
-    // 检测是否在Tauri环境中
-    const checkTauriEnv = async () => {
-      try {
-        // 从HotkeyService获取Tauri环境状态
-        isTauriEnv.value = hotkeyService.isInTauriEnv();
-        console.log(`设置界面 - 当前环境: ${isTauriEnv.value ? 'Tauri' : 'Web'}`);
-      } catch (error) {
-        console.error('检测Tauri环境失败:', error);
-        isTauriEnv.value = false;
       }
     };
 
@@ -346,9 +342,9 @@ export default defineComponent({
 
     return {
       autoCopyText,
-      close,
+      close: () => emit('close'),
       isListening,
-      tooltipVisibility,
+      tooltipState,
       activeConfigType,
       hotkeyConfigs,
       startListening,
@@ -356,10 +352,7 @@ export default defineComponent({
       selectedMonitor,
       monitorCount,
       isTauriEnv,
-      // 剪切板寄存器相关
-      clipRegTooltipVisible,
       clipRegEnabled,
-      clipRegSyncTooltipVisible,
       clipRegSyncEnabled,
     };
   },
@@ -368,113 +361,59 @@ export default defineComponent({
 
 <style scoped>
 .modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
+  @apply fixed inset-0 bg-black/50 flex justify-center items-center z-[2000];
 }
 
 .modal-content {
-  position: relative;
-  background-color: white;
-  padding: 30px;
-  border-radius: 1.5rem;
-  width: 400px;
-  max-width: 90%;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+  @apply relative bg-white p-8 rounded-3xl w-[400px] max-w-[90%] shadow-lg;
 }
 
 .close-icon {
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: #555;
-  transition: color 0.3s;
-}
-
-.close-icon:hover {
-  color: #000;
+  @apply absolute top-4 right-4 bg-transparent border-none cursor-pointer text-gray-600 hover:text-gray-900 transition-colors;
 }
 
 .modal-content h2 {
-  margin-top: 0;
-  margin-bottom: 20px;
+  @apply text-xl font-semibold mb-6 mt-0;
 }
 
 .setting-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1.5rem;
-  position: relative;
+  @apply flex items-center justify-between mb-6 relative;
 }
 
 .toggle-checkbox {
-  appearance: none;
-  width: 3rem;
-  height: 1.5rem;
-  background-color: rgb(209 213 219);
-  border-radius: 9999px;
-  position: relative;
-  cursor: pointer;
-  transition: background-color 0.2s ease-in-out;
+  @apply appearance-none w-12 h-6 bg-gray-300 rounded-full relative cursor-pointer transition-colors;
 }
 
 .toggle-checkbox:checked {
-  background-color: rgb(37 99 235);
+  @apply bg-blue-600;
 }
 
 .toggle-checkbox::before {
-  content: '';
-  position: absolute;
-  top: 0.25rem;
-  left: 0.25rem;
-  width: 1rem;
-  height: 1rem;
-  background-color: white;
-  border-radius: 9999px;
-  transition: transform 0.2s ease-in-out;
+  @apply content-[''] absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform;
 }
 
 .toggle-checkbox:checked::before {
-  transform: translateX(1.5rem);
+  @apply translate-x-6;
 }
 
-.absolute {
-  position: absolute;
-}
-
-.relative {
-  position: relative;
-}
-
-.shadow-lg {
-  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 
-              0 4px 6px -2px rgba(0,0,0,0.05);
-}
-
-.error-message {
-  color: red;
-  font-size: 0.875rem;
+.tooltip {
+  @apply absolute ml-2 w-64 bg-gray-800 text-white text-xs rounded p-2 shadow-lg;
+  bottom: 80%;
+  left: 0;
   margin-top: 4px;
+  z-index: 100;
 }
 
 .error-text {
-  color: rgb(239 68 68);
-  font-size: 0.875rem;
-  margin-top: 0.25rem;
-  position: absolute;
-  bottom: -1.25rem;
-  left: 0;
+  @apply text-red-500 text-sm mt-1 absolute -bottom-5 left-0;
+}
+
+.hotkey-button {
+  @apply px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none disabled:opacity-50;
+}
+
+.monitor-select {
+  @apply px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500;
 }
 </style>
 

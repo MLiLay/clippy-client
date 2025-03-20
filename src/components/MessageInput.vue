@@ -1,133 +1,80 @@
 <template>
   <div class="message-input-container flex flex-col space-y-4">
-    <!-- 输入区域 -->
-    <div class="input-area flex-1 flex">
+    <div class="input-area flex">
       <textarea
         v-model="message"
         placeholder="Type your message here..."
-        @keypress.enter.prevent="handleSend"
-        @keypress.shift.enter="addLine"
+        @keydown.enter="(event) => {
+          if (!event.shiftKey) {
+            event.preventDefault();
+            sendText();
+          }
+        }"
         class="w-full p-4 rounded-lg resize-none focus:outline-none bg-gray-100 dark:bg-gray-600 text-gray-800 dark:text-white border-0"
       ></textarea>
-      <!-- 按钮面板 -->
+      
       <ButtonsPanel 
-        @triggerImageUpload="triggerImageUpload" 
+        @triggerImageUpload="imageInput?.click()" 
         @sendText="sendText" 
-        @toggleSettingsModal="toggleSettingsModal" 
-        @openRegisterModal="openRegisterModal" 
-        :isConnected="isConnected"
+        @toggleSettingsModal="$emit('toggleSettingsModal')" 
+        @openRegisterModal="$emit('openRegisterModal')" 
+        :isConnected="connectionStore.isConnected"
       />
     </div>
-    <!-- 文件上传（隐藏的） -->
+    
     <input
       type="file"
-      id="imageInput"
+      ref="imageInput"
       accept="image/*"
       @change="sendImage"
-      ref="imageInput"
-      style="display: none;"
+      class="hidden"
     />
   </div>
 </template>
 
-<script lang="ts">
-import { defineComponent, ref, computed } from 'vue';
-import { sendTextMessage, sendImageMessage } from '../services/SendingService';
-import { useChatStore } from '../stores/useChatStore';
+<script setup lang="ts">
+import { ref } from 'vue';
+import SendingService from '../services/SendingService';
 import { useConnectionStore } from '../stores/useConnectionStore';
 import ButtonsPanel from './ButtonsPanel.vue';
 
-export default defineComponent({
-  name: 'MessageInput',
-  components: {
-    ButtonsPanel,
-  },
-  emits: ['toggleSettingsModal', 'openRegisterModal'],
-  setup(_, { emit }) {
-    const message = ref('');
-    const chatStore = useChatStore();
-    const connectionStore = useConnectionStore();
+// 定义组件事件
+defineEmits(['toggleSettingsModal', 'openRegisterModal']);
 
-    const handleSend = () => {
-      sendText();
-    };
+// 状态和存储
+const message = ref('');
+const imageInput = ref<HTMLInputElement | null>(null);
+const connectionStore = useConnectionStore();
 
-    const addLine = (event: KeyboardEvent) => {
-      if (event.shiftKey && event.key === 'Enter') {
-        message.value += '\n';
-      }
-    };
+// 发送文本消息
+const sendText = async (clipRegIndex?: number) => {
+  const content = message.value.trim();
+  if (!content) return;
+  
+  try {
+    await SendingService.sendTextMessage(content, clipRegIndex);
+    message.value = '';
+  } catch (error) {
+    console.error('消息发送失败:', error);
+  }
+};
 
-    const sendText = async (clipRegIndex?: number) => {
-      const content = message.value.trim();
-      if (!content) return;
-      
-      try {
-        // 根据是否有剪切板寄存器索引选择不同的消息发送方式
-        if (clipRegIndex !== undefined) {
-          // 发送到剪切板寄存器
-          console.log(`发送内容到剪切板寄存器${clipRegIndex+1}`); 
-          await sendTextMessage(content, clipRegIndex);
-        } else {
-          // 普通发送
-          await sendTextMessage(content);
-        }
-        message.value = ''; // 清空输入框
-      } catch (error) {
-        console.log('消息发送失败:', error);
-      }
-    };
-
-    const sendImage = async (event: Event) => {
-      const target = event.target as HTMLInputElement;
-      const file = target.files?.[0];
-      if (file) {
-        try {
-          await sendImageMessage(file);
-        } catch (error) {
-          console.error('图片发送失败:', error);
-        }
-      }
-    };
-
-    const imageInput = ref<HTMLInputElement | null>(null);
-
-    const triggerImageUpload = () => {
-      imageInput.value?.click();
-    };
-
-    // 网络连接状态
-    const isConnected = computed(() => connectionStore.isConnected);
-
-    // 打开设置模态框
-    const toggleSettingsModal = () => {
-      emit('toggleSettingsModal');
-    };
-
-    // 打开 Register 模态框
-    const openRegisterModal = () => {
-      emit('openRegisterModal');
-    };
-
-    return {
-      message,
-      sendText,
-      sendImage,
-      handleSend,
-      addLine,
-      triggerImageUpload,
-      imageInput,
-      isConnected,
-      toggleSettingsModal,
-      openRegisterModal,
-    };
-  },
-});
+// 发送图片消息
+const sendImage = async (event: Event) => {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  
+  try {
+    await SendingService.sendImageMessage(file);
+    (event.target as HTMLInputElement).value = '';
+  } catch (error) {
+    console.error('图片发送失败:', error);
+  }
+};
 </script>
 
 <style scoped>
 .input-area {
-  display: flex;
   flex: 1;
 }
 
@@ -137,23 +84,12 @@ export default defineComponent({
   border-radius: 0.75rem;
   resize: none;
   font-size: 14px;
-  font-family: Arial, sans-serif;
   outline: none;
   background-color: #f0f0f0;
   color: #333;
 }
 
-.progress-bar {
-  height: 100%;
-  background-color: #007bff;
-  transition: width 0.5s ease;
-}
-
 @media (max-width: 600px) {
-  .input-toolbar {
-    gap: 8px;
-  }
-
   .input-area textarea {
     height: 40px;
     padding: 10px 14px;
