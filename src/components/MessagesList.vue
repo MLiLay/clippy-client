@@ -14,6 +14,7 @@
 <script lang="ts">
 import { defineComponent, computed, onMounted, watch, ref, nextTick } from 'vue';
 import { useChatStore } from '../stores/useChatStore';
+import { useConnectionStore } from '../stores/useConnectionStore';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import MessageItem from './MessageItem.vue';
@@ -26,15 +27,16 @@ export default defineComponent({
     MessageItem,
   },
   setup() {
-    const store = useChatStore();
+    const chatStore = useChatStore();
+    const connectionStore = useConnectionStore();
     const messagesContainer = ref<HTMLDivElement | null>(null);
     const scrollAnchor = ref<HTMLDivElement | null>(null);
 
     const sortedMessages = computed(() => {
-      return [...store.messages].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      return [...chatStore.messages].sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     });
 
-    const userId = computed(() => store.userId);
+    const userId = computed(() => connectionStore.userId);
 
     const scrollToBottom = async () => {
       await nextTick();

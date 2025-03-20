@@ -50,6 +50,7 @@
 <script lang="ts">
 import { defineComponent, computed, onMounted } from 'vue';
 import { useChatStore } from '../stores/useChatStore';
+import { useConnectionStore } from '../stores/useConnectionStore';
 import SocketService from '../services/SocketService';
 import { Toast } from 'vant';
 
@@ -57,29 +58,30 @@ export default defineComponent({
   name: 'Register',
   emits: ['close'],
   setup(_, { emit }) {
-    const store = useChatStore();
+    const chatStore = useChatStore();
+    const connectionStore = useConnectionStore();
 
     const serverAddress = computed({
-      get: () => store.serverAddress,
-      set: (value: string) => store.setServerAddress(value),
+      get: () => connectionStore.serverAddress,
+      set: (value: string) => connectionStore.setServerAddress(value),
     });
 
     const serverPort = computed({
-      get: () => store.serverPort,
-      set: (value: string) => store.setServerPort(value),
+      get: () => connectionStore.serverPort,
+      set: (value: string) => connectionStore.setServerPort(value),
     });
 
     const room = computed({
-      get: () => store.room,
-      set: (value: string) => store.setRoom(value),
+      get: () => connectionStore.room,
+      set: (value: string) => connectionStore.setRoom(value),
     });
 
     const userId = computed({
-      get: () => store.userId,
-      set: (value: string) => store.setUserId(value),
+      get: () => connectionStore.userId,
+      set: (value: string) => connectionStore.setUserId(value),
     });
 
-    const isConnected = computed(() => store.isConnected);
+    const isConnected = computed(() => connectionStore.isConnected);
 
     const handleConnect = () => {
       const address = serverAddress.value.trim();
@@ -90,7 +92,7 @@ export default defineComponent({
         return;
       }
 
-      if (store.room.trim() && store.userId.trim()) {
+      if (connectionStore.room.trim() && connectionStore.userId.trim()) {
         Toast.loading({
           message: 'Connecting to server...',
           forbidClick: true,
@@ -98,7 +100,7 @@ export default defineComponent({
         });
         const url = `http://${address}:${port}`;
         SocketService.connect(url);
-        SocketService.register(store.room, store.userId);
+        SocketService.register(connectionStore.room, connectionStore.userId);
       } else {
         Toast.fail('Please enter both Room ID and User ID.');
       }
@@ -114,8 +116,8 @@ export default defineComponent({
 
     onMounted(() => {
       // 如果store中没有端口，设置默认端口
-      if (!store.serverPort) {
-        store.setServerPort('8989');
+      if (!connectionStore.serverPort) {
+        connectionStore.setServerPort('8989');
       }
     });
 

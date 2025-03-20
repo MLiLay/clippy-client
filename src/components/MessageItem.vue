@@ -96,6 +96,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import { useChatStore } from '../stores/useChatStore';
+import { useConnectionStore } from '../stores/useConnectionStore';
 
 dayjs.extend(utc);
 
@@ -112,7 +113,8 @@ export default defineComponent({
     },
   },
   setup(props) {
-    const store = useChatStore();
+    const chatStore = useChatStore();
+    const connectionStore = useConnectionStore();
     
     const isSent = computed(() => props.message.userId === props.userId);
     const formattedTimestamp = computed(() => {
@@ -133,7 +135,7 @@ export default defineComponent({
     
     // 获取所有图片消息
     const imageMessages = computed(() => {
-      return store.messages
+      return chatStore.messages
         .filter(msg => msg.type === 'image')
         .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
     });

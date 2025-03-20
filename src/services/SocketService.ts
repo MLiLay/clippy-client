@@ -1,5 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { useChatStore, Message } from '../stores/useChatStore';
+import { useConnectionStore } from '../stores/useConnectionStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import ClipboardService from './ClipboardService';
 import { Toast } from 'vant'; // 导入 Vant 的 Toast 组件
 
@@ -30,8 +32,8 @@ class SocketService {
     this.isConnecting = true;
 
     this.socket.on('connect', () => {
-      const store = useChatStore();
-      store.setConnectionStatus(true);
+      const connectionStore = useConnectionStore();
+      connectionStore.setConnectionStatus(true);
       this.isConnecting = false;
       console.log(`Connected with socket ID: ${this.socket?.id}`);
 
@@ -43,16 +45,17 @@ class SocketService {
     });
 
     this.socket.on('disconnect', (reason: string) => {
-      const store = useChatStore();
-      store.setConnectionStatus(false);
-      store.clearMessages();
+      const connectionStore = useConnectionStore();
+      const chatStore = useChatStore();
+      connectionStore.setConnectionStatus(false);
+      chatStore.clearMessages();
       this.isConnecting = false;
       console.log(`Disconnected from server. Reason: ${reason}`);
     });
 
     this.socket.on('connect_error', (error: Error) => {
-      const store = useChatStore();
-      store.setConnectionStatus(false);
+      const connectionStore = useConnectionStore();
+      connectionStore.setConnectionStatus(false);
       this.isConnecting = false;
       console.error(`Connection error: ${error.message}`);
     });
@@ -63,13 +66,15 @@ class SocketService {
     });
 
     this.socket.on('sendMessage', async (data: Message) => {
-      const store = useChatStore();
+      const chatStore = useChatStore();
+      const settingsStore = useSettingsStore();
+      const connectionStore = useConnectionStore();
       
       // 处理剪切板寄存器同步消息
       if (data.type === 'text' && data.clipReg !== undefined) {
         try {
           // 导入剪切板寄存器Store
-          const { useClipRegStore } = await import('../stores/clipRegStore');
+          const { useClipRegStore } = await import('../stores/useClipRegStore');
           const clipRegStore = useClipRegStore();
           
           const registerIndex = data.clipReg;
@@ -87,14 +92,14 @@ class SocketService {
         }
       }
       
-      store.addMessage(data);
+      chatStore.addMessage(data);
       console.log('Received sendMessage:', data);
 
       // 根据设置自动复制和非自己发送的消息自动复制
       try {
-        if (data.type === 'text' && store.autoCopyText && data.userId !== store.userId) {
+        if (data.type === 'text' && settingsStore.autoCopyText && data.userId !== connectionStore.userId) {
           await ClipboardService.copyMessage(data);
-        } else if (data.type === 'image' && store.autoCopyImage) {
+        } else if (data.type === 'image' && settingsStore.autoCopyImage) {
           await ClipboardService.copyMessage(data);
         }
       } catch (error) {
@@ -104,10 +109,10 @@ class SocketService {
 
     this.socket.on('history', (historyMessages: Message[]) => {
       Toast.clear();
-      const store = useChatStore();
-      store.clearMessages();
+      const chatStore = useChatStore();
+      chatStore.clearMessages();
       historyMessages.forEach((message) => {
-        store.addMessage(message);
+        chatStore.addMessage(message);
       });
       console.log('Received history:', historyMessages);
     });
@@ -142,11 +147,11 @@ class SocketService {
 
   sendMessage(type: 'text' | 'image', content: string, clipReg?: number) {
     if (this.socket && this.socket.connected) {
-      const store = useChatStore();
+      const connectionStore = useConnectionStore();
       const message: Message = { 
         type, 
         content, 
-        userId: store.userId, 
+        userId: connectionStore.userId, 
         timestamp: new Date().toISOString() 
       };
       

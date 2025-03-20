@@ -34,6 +34,7 @@
 import { defineComponent, ref, computed } from 'vue';
 import { sendTextMessage, sendImageMessage } from '../services/SendingService';
 import { useChatStore } from '../stores/useChatStore';
+import { useConnectionStore } from '../stores/useConnectionStore';
 import ButtonsPanel from './ButtonsPanel.vue';
 
 export default defineComponent({
@@ -44,7 +45,8 @@ export default defineComponent({
   emits: ['toggleSettingsModal', 'openRegisterModal'],
   setup(_, { emit }) {
     const message = ref('');
-    const store = useChatStore();
+    const chatStore = useChatStore();
+    const connectionStore = useConnectionStore();
 
     const handleSend = () => {
       sendText();
@@ -95,7 +97,7 @@ export default defineComponent({
     };
 
     // 网络连接状态
-    const isConnected = computed(() => store.isConnected);
+    const isConnected = computed(() => connectionStore.isConnected);
 
     // 打开设置模态框
     const toggleSettingsModal = () => {

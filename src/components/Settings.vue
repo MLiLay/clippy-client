@@ -127,8 +127,8 @@
 
 <script lang="ts">
 import { defineComponent, ref, computed, onBeforeUnmount, onMounted } from 'vue';
-import { useChatStore } from '../stores/useChatStore';
-import { useClipRegStore } from '../stores/clipRegStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
+import { useClipRegStore } from '../stores/useClipRegStore';
 import { getHotkeyService } from '../services/HotkeyService';
 import { Toast } from 'vant';
 import { invoke } from '@tauri-apps/api/core'; // 用于调用 Tauri 命令
@@ -152,7 +152,7 @@ export default defineComponent({
   name: 'Settings',
   emits: ['close'],
   setup(_, { emit }) {
-    const store = useChatStore();
+    const settingsStore = useSettingsStore();
     const clipRegStore = useClipRegStore();
     const hotkeyService = getHotkeyService();
     const isTauriEnv = ref(false);
@@ -198,8 +198,8 @@ export default defineComponent({
 
     // 基础计算属性
     const autoCopyText = computed({
-      get: () => store.autoCopyText,
-      set: (value: boolean) => store.setAutoCopyText(value),
+      get: () => settingsStore.autoCopyText,
+      set: (value: boolean) => settingsStore.setAutoCopyText(value),
     });
 
     const formatHotkey = (hotkey: string) => {
@@ -212,13 +212,13 @@ export default defineComponent({
         type: 'send',
         label: '发送剪切板文本',
         tooltip: '发送剪切板文本内容，非文本不发送',
-        currentHotkey: formatHotkey(store.hotkeySendText),
+        currentHotkey: formatHotkey(settingsStore.hotkeySendText),
         setter: hotkeyService.setHotkey.bind(hotkeyService),
       },
       {
         type: 'screenshot',
         label: '截取全屏并发送',
-        currentHotkey: formatHotkey(store.hotkeyScreenshot),
+        currentHotkey: formatHotkey(settingsStore.hotkeyScreenshot),
         setter: hotkeyService.setScreenshotHotkey.bind(hotkeyService),
       },
     ]);
@@ -303,8 +303,8 @@ export default defineComponent({
     
     // 选中的显示器
     const selectedMonitor = computed({
-      get: () => store.selectedMonitor,
-      set: (value: number) => store.setSelectedMonitor(value)
+      get: () => settingsStore.selectedMonitor,
+      set: (value: number) => settingsStore.setSelectedMonitor(value)
     });
 
     // 获取显示器数量

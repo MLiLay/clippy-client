@@ -2,41 +2,52 @@ import { register, unregister, isRegistered, unregisterAll } from '@tauri-apps/p
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { sendTextMessage } from './SendingService';
 import SocketService from './SocketService';
-import { useChatStore } from '../stores/useChatStore';
-import { useClipRegStore } from '../stores/clipRegStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
+import { useClipRegStore } from '../stores/useClipRegStore';
 import { Toast } from 'vant';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 
+// 热键回调函数类型
+type HotkeyCallback = (event: any) => Promise<void>;
+
+// 寄存器操作类型
+enum RegisterOperation {
+  PASTE, // 粘贴操作
+  SAVE,  // 保存操作
+  TYPE   // 模拟输入操作
+}
+
+// 寄存器配置接口
+interface RegisterConfig {
+  shortcut: string;
+  operation: RegisterOperation;
+  index: number;
+}
+
 class HotkeyService {
   private currentShortcut: string;
-  private store: ReturnType<typeof useChatStore>;
+  private settingsStore: ReturnType<typeof useSettingsStore>;
   private clipRegStore: ReturnType<typeof useClipRegStore>;
   private isInitialized: boolean = false;
   private isTauriEnv: boolean = false;
+  
+  // 寄存器配置
+  private readonly REGISTER_COUNT = 5;
+  private readonly SAVE_KEYS = ['6', '7', '8', '9', '0'];
+  private registeredShortcuts: Set<string> = new Set();
 
-  constructor(store: ReturnType<typeof useChatStore>) {
-    this.store = store;
+  constructor() {
+    this.settingsStore = useSettingsStore();
     this.clipRegStore = useClipRegStore();
-    this.currentShortcut = this.store.hotkeySendText;
-    console.log('HotkeyService 实例化');
-
-    this.checkTauriEnv();
-  }
-
-  private async checkTauriEnv() {
-    try {
-      this.isTauriEnv = await isTauri();
-      console.log(`当前环境: ${this.isTauriEnv ? 'Tauri' : 'Web'}`);
-      
-      // 只在Tauri环境中初始化热键
-      if (this.isTauriEnv) {
-        this.initialize();
-      } else {
-        console.log('非Tauri环境，跳过热键初始化');
-      }
-    } catch (error) {
-      console.error('检测Tauri环境失败:', error);
-      this.isTauriEnv = false;
+    this.currentShortcut = this.settingsStore.hotkeySendText;
+    this.isTauriEnv = isTauri();
+    
+    if (this.isTauriEnv) {
+      this.initialize().catch(err => {
+        console.error('初始化热键服务失败:', err);
+      });
+    } else {
+      console.log('非Tauri环境，跳过热键初始化');
     }
   }
 
@@ -45,33 +56,42 @@ class HotkeyService {
     return this.isTauriEnv;
   }
 
-  private async initialize() {
+  // 在Tauri环境中执行函数，否则返回false
+  private async inTauriOrFalse<T>(func: () => Promise<T>): Promise<T | false> {
+    if (!this.isTauriEnv) return Promise.resolve(false);
+    return func();
+  }
+
+  private async initialize(): Promise<void> {
     if (this.isInitialized) return;
     this.isInitialized = true;
 
-    const success = await this.setHotkey(this.currentShortcut);
-    if (!success) {
-      Toast.fail(`发送文本热键 "${this.currentShortcut}" 注册失败，请重启软件。`);
-    }
+    try {
+      // 注册发送文本热键
+      if (!await this.setHotkey(this.currentShortcut)) {
+        Toast.fail(`发送文本热键 "${this.currentShortcut}" 注册失败，请重启软件。`);
+      }
 
-    const successScreenshot = await this.setScreenshotHotkey(this.store.hotkeyScreenshot);
-    if (!successScreenshot) {
-      Toast.fail(`截图发送热键 "${this.store.hotkeyScreenshot}" 注册失败，请重启软件。`);
+      // 注册截图热键
+      if (!await this.setScreenshotHotkey(this.settingsStore.hotkeyScreenshot)) {
+        Toast.fail(`截图发送热键 "${this.settingsStore.hotkeyScreenshot}" 注册失败，请重启软件。`);
+      }
+      
+      // 初始化剪切板寄存器热键
+      await this.initClipRegHotkeys();
+    } catch (error) {
+      console.error('初始化热键服务失败:', error);
+      Toast.fail('热键服务初始化失败');
     }
-    
-    // 初始化剪切板寄存器热键
-    await this.initClipRegHotkeys();
   }
 
+  // 注册单个快捷键
   private async registerShortcut(
     newShortcut: string,
-    callback: (event: any) => Promise<void>,
+    callback: HotkeyCallback,
     oldShortcut?: string
   ): Promise<boolean> {
-    // 非Tauri环境不注册热键
-    if (!this.isTauriEnv) {
-      return false;
-    }
+    if (!this.isTauriEnv) return false;
 
     try {
       const alreadyRegistered = await isRegistered(newShortcut);
@@ -79,10 +99,15 @@ class HotkeyService {
         Toast.fail(`热键 "${newShortcut}" 已被其他应用占用。`);
         return false;
       }
+      
       await register(newShortcut, callback);
+      this.registeredShortcuts.add(newShortcut);
+      
+      // 如果之前有旧热键且与新热键不同，则注销旧热键
       if (oldShortcut && oldShortcut !== newShortcut) {
-        await unregister(oldShortcut);
+        await this.unregisterShortcut(oldShortcut);
       }
+      
       return true;
     } catch (error) {
       console.error(`注册热键失败 (${newShortcut}):`, error);
@@ -91,198 +116,220 @@ class HotkeyService {
   }
 
   async setHotkey(newShortcut: string): Promise<boolean> {
-    // 非Tauri环境不设置热键
-    if (!this.isTauriEnv) {
-      return false;
-    }
-
-    const success = await this.registerShortcut(newShortcut, async (event) => {
-      if (event.state === 'Pressed') {
-        const clipboardText = await readText();
-        if (clipboardText) {
-          sendTextMessage(clipboardText);
-        }
+    return this.inTauriOrFalse(async () => {
+      const success = await this.registerShortcut(
+        newShortcut, 
+        async (event) => {
+          if (event.state === 'Pressed') {
+            try {
+              const clipboardText = await readText();
+              if (clipboardText) {
+                sendTextMessage(clipboardText);
+              }
+            } catch (error) {
+              console.error('读取剪贴板失败:', error);
+              Toast.fail('读取剪贴板失败');
+            }
+          }
+        }, 
+        this.currentShortcut
+      );
+      
+      if (success) {
+        this.currentShortcut = newShortcut;
+        this.settingsStore.setHotkeySendText(newShortcut);
       }
-    }, this.currentShortcut);
-    if (success) {
-      this.currentShortcut = newShortcut;
-      this.store.setHotkeySendText(newShortcut);
-    }
-    return success;
+      
+      return success;
+    });
   }
 
   async setScreenshotHotkey(newShortcut: string): Promise<boolean> {
-    // 非Tauri环境不设置热键
-    if (!this.isTauriEnv) {
-      return false;
-    }
-
-    const success = await this.registerShortcut(newShortcut, async (event) => {
-      if (event.state === 'Pressed') {
-        try {
-          const base64 = await invoke<string>('screenshot', {
-            monitorIndex: this.store.selectedMonitor
-          });
-          if (base64) {
-            SocketService.sendMessage('image', base64);
+    return this.inTauriOrFalse(async () => {
+      const success = await this.registerShortcut(
+        newShortcut, 
+        async (event) => {
+          if (event.state === 'Pressed') {
+            try {
+              const base64 = await invoke<string>('screenshot', {
+                monitorIndex: this.settingsStore.selectedMonitor
+              });
+              
+              if (base64) {
+                SocketService.sendMessage('image', base64);
+              }
+            } catch (err) {
+              console.error('截图失败:', err);
+              Toast.fail('截图失败');
+            }
           }
-        } catch (err) {
-          console.error('截图失败:', err);
-        }
+        }, 
+        this.settingsStore.hotkeyScreenshot
+      );
+      
+      if (success) {
+        this.settingsStore.setHotkeyScreenshot(newShortcut);
       }
-    }, this.store.hotkeyScreenshot);
-    if (success) {
-      this.store.setHotkeyScreenshot(newShortcut);
+      
+      return success;
+    });
+  }
+
+  // 注销单个热键
+  private async unregisterShortcut(shortcut: string): Promise<void> {
+    if (!this.isTauriEnv || !this.registeredShortcuts.has(shortcut)) return;
+    
+    try {
+      await unregister(shortcut);
+      this.registeredShortcuts.delete(shortcut);
+    } catch (error) {
+      console.error(`注销热键失败 (${shortcut}):`, error);
     }
-    return success;
   }
 
   // 注销当前热键
   async unregisterCurrentHotkey(): Promise<void> {
     if (!this.isTauriEnv) return;
-
-    try {
-      await unregister(this.currentShortcut);
-      console.log(`已注销全局热键: ${this.currentShortcut}`);
-    } catch (error) {
-      console.error(`注销热键失败 (${this.currentShortcut}):`, error);
-    }
+    await this.unregisterShortcut(this.currentShortcut);
+    console.log(`已注销全局热键: ${this.currentShortcut}`);
   }
 
   // 注销所有热键（在应用关闭时调用）
   async unregisterAll(): Promise<void> {
     if (!this.isTauriEnv) return;
-
     try {
       await unregisterAll();
+      this.registeredShortcuts.clear();
       console.log('已注销所有全局热键。');
     } catch (error) {
       console.error('注销所有热键失败:', error);
     }
   }
 
-  // 初始化剪切板寄存器热键
-  private async initClipRegHotkeys() {
-    if (!this.isTauriEnv) return;
+  // 创建寄存器操作回调函数
+  private createRegisterCallback(index: number, operation: RegisterOperation): HotkeyCallback {
+    return async (event) => {
+      if (event.state !== 'Pressed') return;
+      
+      try {
+        switch (operation) {
+          case RegisterOperation.PASTE:
+          case RegisterOperation.TYPE:
+            await this.handleRegisterRead(index, operation);
+            break;
+          case RegisterOperation.SAVE:
+            await this.handleRegisterSave(index);
+            break;
+        }
+      } catch (error) {
+        console.error(`寄存器操作失败 (${RegisterOperation[operation]}):`, error);
+        Toast.fail(`操作失败: ${error}`);
+      }
+    };
+  }
+  
+  // 处理从寄存器读取内容（粘贴或输入）
+  private async handleRegisterRead(index: number, operation: RegisterOperation): Promise<void> {
+    const content = this.clipRegStore.getFromRegister(index);
+    if (!content) {
+      Toast.fail(`寄存器${index + 1}为空`);
+      return;
+    }
     
-    // 如果剪切板寄存器功能被禁用，则不注册热键
-    if (!this.clipRegStore.enabled) {
-      console.log('剪切板寄存器功能已禁用，跳过热键注册');
+    if (operation === RegisterOperation.PASTE) {
+      await writeText(content);
+      await invoke('paste_text');
+      Toast.success(`已粘贴寄存器${index + 1}的内容`);
+    } else {
+      await invoke('type_text', { text: content });
+      Toast.success(`已输入寄存器${index + 1}的内容`);
+    }
+  }
+  
+  // 处理保存内容到寄存器
+  private async handleRegisterSave(index: number): Promise<void> {
+    const clipboardText = await readText();
+    if (!clipboardText) {
+      Toast.fail('剪切板为空');
+      return;
+    }
+    
+    // 保存到本地寄存器
+    this.clipRegStore.saveToRegister(index, clipboardText);
+    Toast.success(`已保存到寄存器${index + 1}`);
+    
+    // 如果启用了同步，发送到其他设备
+    if (this.clipRegStore.syncEnabled) {
+      try {
+        SocketService.sendMessage('text', clipboardText, index);
+        console.log(`已同步寄存器${index + 1}内容到其他设备`);
+      } catch (error) {
+        console.error('同步剪切板寄存器失败:', error);
+        Toast.fail('同步失败');
+      }
+    }
+  }
+
+  // 生成所有寄存器热键配置
+  private generateRegisterConfigs(): RegisterConfig[] {
+    const configs: RegisterConfig[] = [];
+    
+    // Alt+1 到 Alt+5 (粘贴)
+    for (let i = 0; i < this.REGISTER_COUNT; i++) {
+      configs.push({
+        shortcut: `Alt+${i + 1}`,
+        operation: RegisterOperation.PASTE,
+        index: i
+      });
+    }
+    
+    // Alt+6 到 Alt+0 (保存)
+    this.SAVE_KEYS.forEach((key, i) => {
+      configs.push({
+        shortcut: `Alt+${key}`,
+        operation: RegisterOperation.SAVE,
+        index: i
+      });
+    });
+    
+    // Ctrl+Alt+1 到 Ctrl+Alt+5 (输入)
+    for (let i = 0; i < this.REGISTER_COUNT; i++) {
+      configs.push({
+        shortcut: `Ctrl+Alt+${i + 1}`,
+        operation: RegisterOperation.TYPE,
+        index: i
+      });
+    }
+    
+    // Ctrl+Alt+6 到 Ctrl+Alt+0 (保存)
+    this.SAVE_KEYS.forEach((key, i) => {
+      configs.push({
+        shortcut: `Ctrl+Alt+${key}`,
+        operation: RegisterOperation.SAVE,
+        index: i
+      });
+    });
+    
+    return configs;
+  }
+
+  // 初始化剪切板寄存器热键
+  private async initClipRegHotkeys(): Promise<void> {
+    if (!this.isTauriEnv || !this.clipRegStore.enabled) {
+      console.log('剪切板寄存器功能已禁用或非Tauri环境，跳过热键注册');
       return;
     }
     
     try {
-      // 注册粘贴热键 (Alt+1 到 Alt+5)
-      for (let i = 1; i <= 5; i++) {
-        const shortcut = `Alt+${i}`;
-        const registerIndex = i - 1; // 转换为0-4的索引
-        
-        await this.registerShortcut(shortcut, async (event) => {
-          if (event.state === 'Pressed') {
-            const content = this.clipRegStore.getFromRegister(registerIndex);
-            if (content) {
-              try {
-                // 先写入系统剪切板
-                await writeText(content);
-                // 然后触发系统粘贴操作
-                await invoke('paste_text');
-                Toast.success(`已粘贴寄存器${i}的内容`);
-              } catch (error) {
-                console.error('粘贴操作失败:', error);
-                Toast.fail(`粘贴失败: ${error}`);
-              }
-            } else {
-              Toast.fail(`寄存器${i}为空`);
-            }
-          }
-        });
-      }
+      const configs = this.generateRegisterConfigs();
       
-      // 注册保存热键 (Alt+6 到 Alt+0)
-      const saveKeys = ['6', '7', '8', '9', '0'];
-      for (let i = 0; i < 5; i++) {
-        const shortcut = `Alt+${saveKeys[i]}`;
-        const registerIndex = i; // 6-0对应寄存器0-4
-        
-        await this.registerShortcut(shortcut, async (event) => {
-          if (event.state === 'Pressed') {
-            const clipboardText = await readText();
-            if (clipboardText) {
-              // 保存到本地寄存器
-              this.clipRegStore.saveToRegister(registerIndex, clipboardText);
-              Toast.success(`已保存到寄存器${registerIndex + 1}`);
-              
-              // 如果启用了同步，发送到其他设备
-              if (this.clipRegStore.syncEnabled) {
-                try {
-                  // 使用clipreg字段发送消息
-                  SocketService.sendMessage('text', clipboardText, registerIndex);
-                  console.log(`已同步寄存器${registerIndex + 1}内容到其他设备`);
-                } catch (error) {
-                  console.error('同步剪切板寄存器失败:', error);
-                  Toast.fail('同步失败');
-                }
-              }
-            } else {
-              Toast.fail('剪切板为空');
-            }
-          }
-        });
-      }
-      
-      // 注册输入热键 (Ctrl+Alt+1 到 Ctrl+Alt+5)
-      for (let i = 1; i <= 5; i++) {
-        const shortcut = `Ctrl+Alt+${i}`;
-        const registerIndex = i - 1; // 转换为0-4的索引
-        
-        await this.registerShortcut(shortcut, async (event) => {
-          if (event.state === 'Pressed') {
-            const content = this.clipRegStore.getFromRegister(registerIndex);
-            if (content) {
-              try {
-                // 直接使用type_text输入
-                await invoke('type_text', { text: content });
-                Toast.success(`已输入寄存器${i}的内容`);
-              } catch (error) {
-                console.error('文本输入失败:', error);
-                Toast.fail(`输入失败: ${error}`);
-              }
-            } else {
-              Toast.fail(`寄存器${i}为空`);
-            }
-          }
-        });
-      }
-      
-      // 注册保存热键 (Ctrl+Alt+6 到 Ctrl+Alt+0)
-      for (let i = 0; i < 5; i++) {
-        const shortcut = `Ctrl+Alt+${saveKeys[i]}`;
-        const registerIndex = i; // 6-0对应寄存器0-4
-        
-        await this.registerShortcut(shortcut, async (event) => {
-          if (event.state === 'Pressed') {
-            const clipboardText = await readText();
-            if (clipboardText) {
-              this.clipRegStore.saveToRegister(registerIndex, clipboardText);
-              Toast.success(`已保存到寄存器${registerIndex + 1}`);
-              
-              // 如果启用了同步，发送到其他设备
-              if (this.clipRegStore.syncEnabled) {
-                try {
-                  // 使用clipreg字段发送消息
-                  SocketService.sendMessage('text', clipboardText, registerIndex);
-                  console.log(`已同步寄存器${registerIndex + 1}内容到其他设备`);
-                } catch (error) {
-                  console.error('同步剪切板寄存器失败:', error);
-                  Toast.fail('同步失败');
-                }
-              }
-            } else {
-              Toast.fail('剪切板为空');
-            }
-          }
-        });
-      }
+      // 注册所有热键
+      await Promise.all(configs.map(config => 
+        this.registerShortcut(
+          config.shortcut, 
+          this.createRegisterCallback(config.index, config.operation)
+        )
+      ));
       
       console.log('剪切板寄存器热键注册成功');
     } catch (error) {
@@ -293,14 +340,11 @@ class HotkeyService {
   // 设置剪切板寄存器功能状态
   async setClipRegEnabled(enabled: boolean): Promise<void> {
     if (!this.isTauriEnv) return;
-    
     this.clipRegStore.setEnabled(enabled);
     
     if (!enabled) {
-      // 如果禁用，注销所有剪切板寄存器相关快捷键
       await this.unregisterClipRegHotkeys();
     } else {
-      // 如果启用，重新注册所有剪切板寄存器相关快捷键
       await this.initClipRegHotkeys();
     }
   }
@@ -310,26 +354,11 @@ class HotkeyService {
     if (!this.isTauriEnv) return;
     
     try {
-      // 注销Alt+1到Alt+5
-      for (let i = 1; i <= 5; i++) {
-        await unregister(`Alt+${i}`);
-      }
+      const configs = this.generateRegisterConfigs();
+      const shortcuts = configs.map(config => config.shortcut);
       
-      // 注销Alt+6到Alt+0
-      const saveKeys = ['6', '7', '8', '9', '0'];
-      for (const key of saveKeys) {
-        await unregister(`Alt+${key}`);
-      }
-      
-      // 注销Ctrl+Alt+1到Ctrl+Alt+5
-      for (let i = 1; i <= 5; i++) {
-        await unregister(`Ctrl+Alt+${i}`);
-      }
-      
-      // 注销Ctrl+Alt+6到Ctrl+Alt+0
-      for (const key of saveKeys) {
-        await unregister(`Ctrl+Alt+${key}`);
-      }
+      // 并行注销所有热键
+      await Promise.all(shortcuts.map(shortcut => this.unregisterShortcut(shortcut)));
       
       console.log('已注销所有剪切板寄存器热键');
     } catch (error) {
@@ -340,25 +369,23 @@ class HotkeyService {
   // 设置剪切板寄存器同步功能状态
   async setClipRegSyncEnabled(enabled: boolean): Promise<void> {
     if (!this.isTauriEnv) return;
-    
-    // 更新store中的同步状态
     this.clipRegStore.setSyncEnabled(enabled);
   }
 }
 
-// Singleton 实例管理
+// 单例模式实现
 let hotkeyServiceInstance: HotkeyService | null = null;
 
-export function initializeHotkeyService(store: ReturnType<typeof useChatStore>) {
+export function initializeHotkeyService(): HotkeyService {
   if (!hotkeyServiceInstance) {
-    hotkeyServiceInstance = new HotkeyService(store);
+    hotkeyServiceInstance = new HotkeyService();
   }
   return hotkeyServiceInstance;
 }
 
 export function getHotkeyService(): HotkeyService {
   if (!hotkeyServiceInstance) {
-    throw new Error('HotkeyService 未初始化。请先调用 initializeHotkeyService。');
+    throw new Error('HotkeyService 未初始化，需先调用 initializeHotkeyService 获取实例');
   }
   return hotkeyServiceInstance;
 }
