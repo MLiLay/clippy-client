@@ -64,6 +64,29 @@ class SocketService {
 
     this.socket.on('sendMessage', async (data: Message) => {
       const store = useChatStore();
+      
+      // 处理剪切板寄存器同步消息
+      if (data.type === 'text' && data.clipReg !== undefined) {
+        try {
+          // 导入剪切板寄存器Store
+          const { useClipRegStore } = await import('../stores/clipRegStore');
+          const clipRegStore = useClipRegStore();
+          
+          const registerIndex = data.clipReg;
+          
+          // 如果寄存器功能已启用，则保存
+          if (clipRegStore.enabled && registerIndex >= 0 && registerIndex < 5) {
+            clipRegStore.saveToRegister(registerIndex, data.content);
+            Toast.success(`收到寄存器${registerIndex + 1}同步内容`);
+            console.log(`收到寄存器${registerIndex + 1}同步内容，已保存`);
+          } else if (!clipRegStore.enabled) {
+            console.log(`收到寄存器${registerIndex + 1}同步内容，但寄存器功能未启用`);
+          }
+        } catch (error) {
+          console.error('处理剪切板寄存器同步消息失败:', error);
+        }
+      }
+      
       store.addMessage(data);
       console.log('Received sendMessage:', data);
 
@@ -117,15 +140,26 @@ class SocketService {
     }
   }
 
-  sendMessage(type: 'text' | 'image', content: string) {
+  sendMessage(type: 'text' | 'image', content: string, clipReg?: number) {
     if (this.socket && this.socket.connected) {
       const store = useChatStore();
-      const message: Message = { type, content, userId: store.userId, timestamp: new Date().toISOString() };
+      const message: Message = { 
+        type, 
+        content, 
+        userId: store.userId, 
+        timestamp: new Date().toISOString() 
+      };
+      
+      // 如果指定了clipReg参数且为文本消息，添加到消息中
+      if (clipReg !== undefined && type === 'text') {
+        message.clipReg = clipReg;
+      }
+      
       this.socket.emit('sendMessage', message);
-      console.log(`Emitting sendMessage event with type: ${type}, message:`, message);
+      console.log(`发送消息: ${type}`, message);
     } else {
-      Toast.fail('Cannot send message because socket is not connected.');
-      console.error('Cannot send message because socket is not connected.');
+      Toast.fail('未连接到服务器，无法发送消息');
+      console.error('未连接到服务器，无法发送消息');
     }
   }
 

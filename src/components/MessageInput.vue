@@ -56,10 +56,20 @@ export default defineComponent({
       }
     };
 
-    const sendText = async () => {
+    const sendText = async (clipRegIndex?: number) => {
       const content = message.value.trim();
+      if (!content) return;
+      
       try {
-        await sendTextMessage(content);
+        // 根据是否有剪切板寄存器索引选择不同的消息发送方式
+        if (clipRegIndex !== undefined) {
+          // 发送到剪切板寄存器
+          console.log(`发送内容到剪切板寄存器${clipRegIndex+1}`); 
+          await sendTextMessage(content, clipRegIndex);
+        } else {
+          // 普通发送
+          await sendTextMessage(content);
+        }
         message.value = ''; // 清空输入框
       } catch (error) {
         console.log('消息发送失败:', error);

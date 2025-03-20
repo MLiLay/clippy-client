@@ -16,6 +16,58 @@
           class="toggle-checkbox"
         />
       </div>
+      
+      <!-- 剪切板寄存器功能设置 - 仅在Tauri环境中显示 -->
+      <div v-if="isTauriEnv" class="setting-item flex items-center justify-between mb-4">
+        <div class="flex items-center space-x-2">
+          <label for="clipRegEnabled" class="text-md font-medium">剪切板寄存器</label>
+          <font-awesome-icon 
+            :icon="['fas', 'circle-info']" 
+            class="w-4 h-4 text-gray-500 hover:text-gray-700 cursor-pointer"
+            @mouseenter="clipRegTooltipVisible = true"
+            @mouseleave="clipRegTooltipVisible = false"
+          />
+          <div 
+            v-if="clipRegTooltipVisible" 
+            class="absolute ml-2 w-64 bg-gray-800 text-white text-xs rounded p-2 shadow-lg"
+            style="bottom: 80%; left: 0; margin-top: 4px; z-index: 100;"
+          >
+            5个剪切板寄存器，Alt+1~5粘贴，Alt+6~0保存(对应Ctrl+Alt+1~5输入)，Ctrl+Alt+1~5输入
+          </div>
+        </div>
+        <input 
+          type="checkbox" 
+          id="clipRegEnabled" 
+          v-model="clipRegEnabled" 
+          class="toggle-checkbox"
+        />
+      </div>
+      
+      <!-- 剪切板寄存器同步设置 - 仅在剪切板寄存器启用时显示 -->
+      <div v-if="isTauriEnv && clipRegEnabled" class="setting-item flex items-center justify-between mb-4 ml-6">
+        <div class="flex items-center space-x-2">
+          <label for="clipRegSyncEnabled" class="text-md font-medium">同步到其他设备</label>
+          <font-awesome-icon 
+            :icon="['fas', 'circle-info']" 
+            class="w-4 h-4 text-gray-500 hover:text-gray-700 cursor-pointer"
+            @mouseenter="clipRegSyncTooltipVisible = true"
+            @mouseleave="clipRegSyncTooltipVisible = false"
+          />
+          <div 
+            v-if="clipRegSyncTooltipVisible" 
+            class="absolute ml-2 w-64 bg-gray-800 text-white text-xs rounded p-2 shadow-lg"
+            style="bottom: 80%; left: 0; margin-top: 4px; z-index: 100;"
+          >
+            将剪切板寄存器内容同步到其他设备，同时在接收端自动存储
+          </div>
+        </div>
+        <input 
+          type="checkbox" 
+          id="clipRegSyncEnabled" 
+          v-model="clipRegSyncEnabled" 
+          class="toggle-checkbox"
+        />
+      </div>
 
       <!-- 热键设置 - 仅在Tauri环境中显示 -->
       <template v-if="isTauriEnv">
@@ -76,6 +128,7 @@
 <script lang="ts">
 import { defineComponent, ref, computed, onBeforeUnmount, onMounted } from 'vue';
 import { useChatStore } from '../stores/useChatStore';
+import { useClipRegStore } from '../stores/clipRegStore';
 import { getHotkeyService } from '../services/HotkeyService';
 import { Toast } from 'vant';
 import { invoke } from '@tauri-apps/api/core'; // 用于调用 Tauri 命令
@@ -100,6 +153,7 @@ export default defineComponent({
   emits: ['close'],
   setup(_, { emit }) {
     const store = useChatStore();
+    const clipRegStore = useClipRegStore();
     const hotkeyService = getHotkeyService();
     const isTauriEnv = ref(false);
     
@@ -112,6 +166,34 @@ export default defineComponent({
     const errorMessages = ref<Record<HotkeyType, string>>({
       send: '',
       screenshot: ''
+    });
+    
+    // 剪切板寄存器功能相关
+    const clipRegTooltipVisible = ref(false);
+    const clipRegEnabled = computed({
+      get: () => clipRegStore.enabled,
+      set: async (value: boolean) => {
+        await hotkeyService.setClipRegEnabled(value);
+        if (value) {
+          Toast.success('剪切板寄存器功能已启用');
+        } else {
+          Toast.success('剪切板寄存器功能已禁用');
+        }
+      }
+    });
+
+    // 剪切板寄存器同步相关
+    const clipRegSyncTooltipVisible = ref(false);
+    const clipRegSyncEnabled = computed({
+      get: () => clipRegStore.syncEnabled,
+      set: async (value: boolean) => {
+        await hotkeyService.setClipRegSyncEnabled(value);
+        if (value) {
+          Toast.success('剪切板寄存器同步已启用');
+        } else {
+          Toast.success('剪切板寄存器同步已禁用');
+        }
+      }
     });
 
     // 基础计算属性
@@ -274,6 +356,11 @@ export default defineComponent({
       selectedMonitor,
       monitorCount,
       isTauriEnv,
+      // 剪切板寄存器相关
+      clipRegTooltipVisible,
+      clipRegEnabled,
+      clipRegSyncTooltipVisible,
+      clipRegSyncEnabled,
     };
   },
 });

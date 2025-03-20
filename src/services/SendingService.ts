@@ -2,10 +2,15 @@ import SocketService from '../services/SocketService';
 import imageCompression from 'browser-image-compression';
 
 // 发送文本消息
-export const sendTextMessage = (content: string) => {
+export const sendTextMessage = (content: string, clipRegIndex?: number) => {
   const trimmedContent = content.trim();
   if (trimmedContent) {
-    SocketService.sendMessage('text', trimmedContent);
+    // 如果指定了剪切板寄存器索引，则传递给SocketService
+    if (clipRegIndex !== undefined) {
+      SocketService.sendMessage('text', trimmedContent, clipRegIndex);
+    } else {
+      SocketService.sendMessage('text', trimmedContent);
+    }
   } else {
     throw new Error('Message content cannot be empty.');
   }

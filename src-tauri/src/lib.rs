@@ -2,11 +2,34 @@
 
 use base64::{engine::general_purpose, Engine as _};
 use std::io::Cursor;
+use std::thread;
+use std::time::Duration;
 use xcap::Monitor;
+use enigo::{
+    Direction::{Click, Press, Release},
+    Enigo, Key, Keyboard, Settings,
+};
 
 #[tauri::command]
 fn get_monitor_count() -> usize {
     Monitor::all().map(|m| m.len()).unwrap_or(1)
+}
+
+#[tauri::command]
+fn paste_text() {
+    thread::sleep(Duration::from_secs(1));
+    let mut enigo = Enigo::new(&Settings::default()).unwrap();
+
+    enigo.key(Key::Control, Press).unwrap();
+    enigo.key(Key::Unicode('v'), Click).unwrap();
+    enigo.key(Key::Control, Release).unwrap();
+}
+
+#[tauri::command]
+fn type_text(text: String) {
+    thread::sleep(Duration::from_secs(1));
+    let mut enigo = Enigo::new(&Settings::default()).unwrap();
+    enigo.text(&text).unwrap();
 }
 
 #[tauri::command]
@@ -31,7 +54,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             screenshot,
-            get_monitor_count
+            get_monitor_count,
+            paste_text,
+            type_text
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

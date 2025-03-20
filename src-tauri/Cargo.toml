@@ -26,6 +26,7 @@ tauri-plugin-clipboard-manager = "2.2.0"
 xcap = "0.2.1"
 base64 = "0.22.1"
 image = "0.25.5"
+enigo = "0.3.0"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
