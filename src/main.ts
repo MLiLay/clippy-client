@@ -3,7 +3,7 @@ import App from './App.vue';
 import { createPinia } from 'pinia';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome';
-import { faImage, faGear, faGlobe, faPaperPlane, faCopy, faXmark, faCircleInfo } from '@fortawesome/free-solid-svg-icons';
+import { faImage, faGear, faGlobe, faPaperPlane, faCopy, faXmark, faCircleInfo, faMagnifyingGlass } from '@fortawesome/free-solid-svg-icons';
 import './assets/tailwind.css';
 import { initializeHotkeyService } from './services/HotkeyService';
 import Vant from 'vant';
@@ -12,7 +12,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import VueEasyLightbox from 'vue-easy-lightbox';
 import 'vue-easy-lightbox/dist/external-css/vue-easy-lightbox.css';
 
-library.add(faImage, faGear, faGlobe, faPaperPlane, faCopy, faXmark, faCircleInfo);
+library.add(faImage, faGear, faGlobe, faPaperPlane, faCopy, faXmark, faCircleInfo, faMagnifyingGlass);
 
 // 创建应用实例
 const app = createApp(App);

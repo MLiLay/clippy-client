@@ -39,7 +39,7 @@
           class="message-image thumbnail" 
         />
         <div class="image-overlay">
-          <span class="zoom-icon">🔍</span>
+          <span class="zoom-icon"><font-awesome-icon :icon="['fas', 'magnifying-glass']" /></span>
         </div>
       </div>
     </div>
