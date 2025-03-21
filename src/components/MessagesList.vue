@@ -1,8 +1,8 @@
 <template>
   <div class="messages-list-container" ref="messagesContainer">
     <MessageItem
-      v-for="message in sortedMessages"
-      :key="`${message.userId}-${message.timestamp}`"
+      v-for="(message, index) in sortedMessages"
+      :key="`${message.userId}-${message.timestamp}-${index}`"
       :message="message"
       :userId="userId"
     />
