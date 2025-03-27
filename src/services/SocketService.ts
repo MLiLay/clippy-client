@@ -30,6 +30,8 @@ const SOCKET_CONFIG = {
   transports: ['websocket'], 
   reconnectionAttempts: 5,
   reconnectionDelay: 3000,
+  pingTimeout: 20000,
+  timeout: 20000,
 };
 
 const MAX_CLIP_REG_INDEX = 4;
