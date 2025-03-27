@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { Message, useChatStore } from '../stores/useChatStore';
 import ClipboardService from '../services/ClipboardService';
 import { isTauri } from '@tauri-apps/api/core';
@@ -157,6 +157,17 @@ onMounted(() => {
                           props.message.content.length > TEXT_EXPANSION_THRESHOLD.CHAR_LENGTH;
   }
 });
+
+watch(imageMessages, (newImages) => {
+  if (lightboxVisible.value && newImages.length > 0) {
+    const currentImg = lightboxImgs.value[lightboxIndex.value];
+    lightboxImgs.value = newImages.map(img => img.content);
+    const newIndex = lightboxImgs.value.findIndex(img => img === currentImg);
+    if (newIndex !== -1) {
+      lightboxIndex.value = newIndex;
+    }
+  }
+}, { deep: true });
 
 // 初始化 dayjs
 dayjs.extend(utc);
