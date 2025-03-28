@@ -2,7 +2,7 @@
   <div :class="messageClasses">
     <div class="message-header">
       <div class="header-content">
-        <span class="sender-id">{{ isSent ? 'You' : message.userId }}</span>
+        <span class="sender-id">{{ message.userId }}</span>
         <span class="timestamp">{{ formattedTimestamp }}</span>
       </div>
       <div class="header-actions">
