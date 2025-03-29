@@ -7,6 +7,7 @@ export const useConnectionStore = defineStore('connection', () => {
   const userId = ref('');
   const serverAddress = ref('');
   const serverPort = ref('8989');
+  const protocol = ref('http');
 
   const setConnectionStatus = (status: boolean) => {
     isConnected.value = status;
@@ -28,16 +29,22 @@ export const useConnectionStore = defineStore('connection', () => {
     serverPort.value = port;
   };
 
+  const setProtocol = (newProtocol: string) => {
+    protocol.value = newProtocol;
+  };
+
   return {
     isConnected,
     room,
     userId,
     serverAddress,
     serverPort,
+    protocol,
     setConnectionStatus,
     setRoom,
     setUserId,
     setServerAddress,
     setServerPort,
+    setProtocol,
   };
 }); 

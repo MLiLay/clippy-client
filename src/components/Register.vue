@@ -7,6 +7,29 @@
       <h2>Connect</h2>
       
       <form @submit.prevent="handleConnect">
+        <div class="form-group protocol-selector">
+          <label class="protocol-label">协议：</label>
+          <div class="protocol-options">
+            <label class="protocol-option">
+              <input 
+                type="radio" 
+                v-model="form.protocol" 
+                value="http" 
+                :disabled="isConnected"
+              />
+              <span>HTTP/WS</span>
+            </label>
+            <label class="protocol-option">
+              <input 
+                type="radio" 
+                v-model="form.protocol" 
+                value="https" 
+                :disabled="isConnected"
+              />
+              <span>HTTPS/WSS</span>
+            </label>
+          </div>
+        </div>
         <div class="form-group">
           <input 
             v-model="form.serverAddress" 
@@ -79,6 +102,7 @@ interface FormState {
   serverPort: string;
   room: string;
   userId: string;
+  protocol: string;
 }
 
 const emit = defineEmits<{
@@ -91,7 +115,8 @@ const form = reactive<FormState>({
   serverAddress: connectionStore.serverAddress,
   serverPort: connectionStore.serverPort || '8989',
   room: connectionStore.room,
-  userId: connectionStore.userId
+  userId: connectionStore.userId,
+  protocol: connectionStore.protocol || 'http'
 });
 
 const isConnected = computed(() => connectionStore.isConnected);
@@ -113,11 +138,12 @@ const validateForm = (): boolean => {
 };
 
 const updateConnectionStore = () => {
-  const { serverAddress, serverPort, room, userId } = form;
+  const { serverAddress, serverPort, room, userId, protocol } = form;
   connectionStore.setServerAddress(serverAddress.trim());
   connectionStore.setServerPort(serverPort.trim());
   connectionStore.setRoom(room.trim());
   connectionStore.setUserId(userId.trim());
+  connectionStore.setProtocol(protocol);
 };
 
 const handleConnect = async () => {
@@ -132,7 +158,7 @@ const handleConnect = async () => {
   });
 
   try {
-    const url = `http://${form.serverAddress.trim()}:${form.serverPort.trim()}`;
+    const url = `${form.protocol}://${form.serverAddress.trim()}:${form.serverPort.trim()}`;
     await SocketService.connect(url);
     await SocketService.register(form.room.trim(), form.userId.trim());
   } catch (error) {
@@ -263,6 +289,38 @@ button {
 .disabled {
   background-color: #ccc;
   cursor: not-allowed;
+}
+
+.protocol-selector {
+  display: flex;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.protocol-label {
+  margin-right: 1rem;
+  font-weight: 500;
+}
+
+.protocol-options {
+  display: flex;
+  gap: 1rem;
+}
+
+.protocol-option {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  cursor: pointer;
+}
+
+.protocol-option input {
+  width: auto;
+  cursor: pointer;
+}
+
+.protocol-option span {
+  font-size: 0.875rem;
 }
 </style>
 

@@ -52,6 +52,12 @@ class SocketService {
       return;
     }
 
+    if (!url.startsWith('http://') && !url.startsWith('https://') && 
+        !url.startsWith('ws://') && !url.startsWith('wss://')) {
+      url = `http://${url}`;
+    }
+
+    // 创建Socket连接
     this.socket = io(url, SOCKET_CONFIG);
     this.isConnecting = true;
     
