@@ -346,6 +346,12 @@ input:disabled {
   cursor: not-allowed;
 }
 
+.server-input-container input:disabled {
+  border-radius: 0;
+  border-top-right-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
+}
+
 .advanced-toggle {
   display: flex;
   align-items: center;
