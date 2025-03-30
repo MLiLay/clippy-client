@@ -1,14 +1,14 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 
 use base64::{engine::general_purpose, Engine as _};
-use std::io::Cursor;
-use std::thread;
-use std::time::Duration;
-use xcap::Monitor;
 use enigo::{
     Direction::{Click, Press, Release},
     Enigo, Key, Keyboard, Settings,
 };
+use std::io::Cursor;
+use std::thread;
+use std::time::Duration;
+use xcap::Monitor;
 
 #[tauri::command]
 fn get_monitor_count() -> usize {
@@ -39,7 +39,10 @@ fn screenshot(monitor_index: usize) -> String {
         if let Ok(image) = monitor.capture_image() {
             let mut buf = Cursor::new(Vec::new());
             if let Ok(_) = image.write_to(&mut buf, image::ImageFormat::WebP) {
-                return format!("data:image/webp;base64,{}", general_purpose::STANDARD.encode(&buf.into_inner()));
+                return format!(
+                    "data:image/webp;base64,{}",
+                    general_purpose::STANDARD.encode(&buf.into_inner())
+                );
             }
         }
     }
@@ -49,6 +52,7 @@ fn screenshot(monitor_index: usize) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
@@ -61,4 +65,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

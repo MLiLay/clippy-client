@@ -1,5 +1,6 @@
 import { register, unregister, isRegistered, unregisterAll } from '@tauri-apps/plugin-global-shortcut';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
+import { platform } from '@tauri-apps/plugin-os';
 import SendingService from './SendingService';
 import SocketService from './SocketService';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -30,6 +31,7 @@ class HotkeyService {
   private clipRegStore: ReturnType<typeof useClipRegStore>;
   private isInitialized: boolean = false;
   private isTauriEnv: boolean = false;
+  private isMacOS: boolean = false;
   
   // 寄存器配置
   private readonly REGISTER_COUNT = 5;
@@ -41,6 +43,7 @@ class HotkeyService {
     this.clipRegStore = useClipRegStore();
     this.currentShortcut = this.settingsStore.hotkeySendText;
     this.isTauriEnv = isTauri();
+    this.isMacOS = this.isTauriEnv ? platform() === 'macos' : false;
     
     if (this.isTauriEnv) {
       this.initialize().catch(err => {
@@ -85,6 +88,12 @@ class HotkeyService {
     }
   }
 
+  private adaptShortcutForPlatform(shortcut: string): string {
+    if (!this.isMacOS) return shortcut;
+    
+    return shortcut.replace(/Alt/g, 'Command');
+  }
+
   // 注册单个快捷键
   private async registerShortcut(
     newShortcut: string,
@@ -94,18 +103,20 @@ class HotkeyService {
     if (!this.isTauriEnv) return false;
 
     try {
-      const alreadyRegistered = await isRegistered(newShortcut);
+      const adaptedNewShortcut = this.adaptShortcutForPlatform(newShortcut);
+      const adaptedOldShortcut = oldShortcut ? this.adaptShortcutForPlatform(oldShortcut) : undefined;
+      
+      const alreadyRegistered = await isRegistered(adaptedNewShortcut);
       if (alreadyRegistered) {
-        Toast.fail(`热键 "${newShortcut}" 已被其他应用占用。`);
+        Toast.fail(`热键 "${adaptedNewShortcut}" 已被其他应用占用。`);
         return false;
       }
       
-      await register(newShortcut, callback);
-      this.registeredShortcuts.add(newShortcut);
+      await register(adaptedNewShortcut, callback);
+      this.registeredShortcuts.add(adaptedNewShortcut);
       
-      // 如果之前有旧热键且与新热键不同，则注销旧热键
-      if (oldShortcut && oldShortcut !== newShortcut) {
-        await this.unregisterShortcut(oldShortcut);
+      if (adaptedOldShortcut && adaptedOldShortcut !== adaptedNewShortcut) {
+        await this.unregisterShortcut(adaptedOldShortcut);
       }
       
       return true;
@@ -177,11 +188,15 @@ class HotkeyService {
 
   // 注销单个热键
   private async unregisterShortcut(shortcut: string): Promise<void> {
-    if (!this.isTauriEnv || !this.registeredShortcuts.has(shortcut)) return;
+    if (!this.isTauriEnv) return;
+    
+    const adaptedShortcut = this.adaptShortcutForPlatform(shortcut);
+    
+    if (!this.registeredShortcuts.has(adaptedShortcut)) return;
     
     try {
-      await unregister(shortcut);
-      this.registeredShortcuts.delete(shortcut);
+      await unregister(adaptedShortcut);
+      this.registeredShortcuts.delete(adaptedShortcut);
     } catch (error) {
       console.error(`注销热键失败 (${shortcut}):`, error);
     }
@@ -267,10 +282,13 @@ class HotkeyService {
   private generateRegisterConfigs(): RegisterConfig[] {
     const configs: RegisterConfig[] = [];
     
+    // 根据平台选择修饰键
+    const modKey = this.isMacOS ? 'Command' : 'Alt';
+    
     // Ctrl+Alt+1 到 Ctrl+Alt+5 (粘贴)
     for (let i = 0; i < this.REGISTER_COUNT; i++) {
       configs.push({
-        shortcut: `Ctrl+Alt+${i + 1}`,
+        shortcut: `Ctrl+${modKey}+${i + 1}`,
         operation: RegisterOperation.PASTE,
         index: i
       });
@@ -279,7 +297,7 @@ class HotkeyService {
     // Ctrl+Alt+6 到 Ctrl+Alt+0 (保存)
     this.SAVE_KEYS.forEach((key, i) => {
       configs.push({
-        shortcut: `Ctrl+Alt+${key}`,
+        shortcut: `Ctrl+${modKey}+${key}`,
         operation: RegisterOperation.SAVE,
         index: i
       });
@@ -288,7 +306,7 @@ class HotkeyService {
     // Ctrl+Shift+Alt+1 到 Ctrl+Shift+Alt+5 (模拟输入)
     for (let i = 0; i < this.REGISTER_COUNT; i++) {
       configs.push({
-        shortcut: `Ctrl+Shift+Alt+${i + 1}`,
+        shortcut: `Ctrl+Shift+${modKey}+${i + 1}`,
         operation: RegisterOperation.TYPE,
         index: i
       });

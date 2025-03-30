@@ -1,14 +1,19 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import { platform } from '@tauri-apps/plugin-os';
+import { isTauri } from '@tauri-apps/api/core';
+
+const isMacOS = isTauri() ? platform() === 'macos' : false;
+
+const getModKey = () => isMacOS ? 'Command' : 'Alt';
 
 export const useSettingsStore = defineStore('settings', () => {
   // 自动复制设置
   const autoCopyText = ref(true);
   const autoCopyImage = ref(false);
 
-  // 热键设置
-  const hotkeySendText = ref('Control+Alt+J');
-  const hotkeyScreenshot = ref('Control+Alt+K');
+  const hotkeySendText = ref(`Control+${getModKey()}+J`);
+  const hotkeyScreenshot = ref(`Control+${getModKey()}+K`);
 
   // 显示器设置
   const selectedMonitor = ref(0);
