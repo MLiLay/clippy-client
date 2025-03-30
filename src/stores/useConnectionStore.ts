@@ -7,7 +7,7 @@ export const useConnectionStore = defineStore('connection', () => {
   const userId = ref('');
   const serverAddress = ref('');
   const serverPort = ref('8989');
-  const protocol = ref('http');
+  const protocol = ref('https');
 
   const setConnectionStatus = (status: boolean) => {
     isConnected.value = status;

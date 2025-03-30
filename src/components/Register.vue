@@ -7,47 +7,24 @@
       <h2>Connect</h2>
       
       <form @submit.prevent="handleConnect">
-        <div class="form-group protocol-selector">
-          <label class="protocol-label">协议：</label>
-          <div class="protocol-options">
-            <label class="protocol-option">
-              <input 
-                type="radio" 
-                v-model="form.protocol" 
-                value="http" 
-                :disabled="isConnected"
-              />
-              <span>HTTP/WS</span>
-            </label>
-            <label class="protocol-option">
-              <input 
-                type="radio" 
-                v-model="form.protocol" 
-                value="https" 
-                :disabled="isConnected"
-              />
-              <span>HTTPS/WSS</span>
-            </label>
+        <div class="form-group server-input-container">
+          <div class="protocol-select">
+            <select v-model="form.protocol" :disabled="isConnected" class="protocol-dropdown">
+              <option value="https">wss://</option>
+              <option value="http" :disabled="isHttpsEnv" :title="isHttpsEnv ? '在HTTPS环境下必须使用WSS协议' : ''">ws://</option>
+            </select>
+          </div>
+          <div class="server-input">
+            <input 
+              v-model="form.serverAddress" 
+              :disabled="isConnected"
+              placeholder="Server Address (e.g., example.com)" 
+              required
+              @keyup.enter="handleConnect"
+            />
           </div>
         </div>
-        <div class="form-group">
-          <input 
-            v-model="form.serverAddress" 
-            :disabled="isConnected"
-            placeholder="Server Address (e.g., example.com)" 
-            required
-            @keyup.enter="handleConnect"
-          />
-        </div>
-        <div class="form-group">
-          <input 
-            v-model="form.serverPort" 
-            :disabled="isConnected"
-            placeholder="Server Port (e.g., 8989)" 
-            required
-            @keyup.enter="handleConnect"
-          />
-        </div>
+        
         <div class="form-group">
           <input 
             v-model="form.room" 
@@ -67,6 +44,27 @@
             pattern="[A-Za-z0-9\-]+"
             @keyup.enter="handleConnect"
           />
+        </div>
+        
+        <div class="advanced-toggle" @click="toggleAdvanced">
+          <span>Advanced Settings</span>
+          <svg xmlns="http://www.w3.org/2000/svg" class="dropdown-icon" :class="{ 'rotate-180': advancedOpen }" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        
+        <div class="advanced-settings" v-show="advancedOpen">
+          <div class="form-group">
+            <input 
+              v-model="form.customPort" 
+              :disabled="isConnected"
+              placeholder="Custom Port (Leave blank for default)" 
+              @keyup.enter="handleConnect"
+              type="number"
+              min="1"
+              max="65535"
+            />
+          </div>
         </div>
         
         <div class="buttons">
@@ -92,14 +90,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, onMounted } from 'vue';
+import { computed, reactive, onMounted, ref, watch } from 'vue';
 import { useConnectionStore } from '../stores/useConnectionStore';
 import SocketService from '../services/SocketService';
 import { Toast } from 'vant';
 
 interface FormState {
   serverAddress: string;
-  serverPort: string;
+  customPort: string;
   room: string;
   userId: string;
   protocol: string;
@@ -110,26 +108,39 @@ const emit = defineEmits<{
 }>();
 
 const connectionStore = useConnectionStore();
+const advancedOpen = ref(false);
 
-const form = reactive<FormState>({
-  serverAddress: connectionStore.serverAddress,
-  serverPort: connectionStore.serverPort || '8989',
-  room: connectionStore.room,
-  userId: connectionStore.userId,
-  protocol: connectionStore.protocol || 'http'
-});
-
+const isHttpsEnv = computed(() => typeof window !== 'undefined' && window.location.protocol === 'https:');
 const isConnected = computed(() => connectionStore.isConnected);
 
+const form = reactive<FormState>({
+  serverAddress: connectionStore.serverAddress || '',
+  customPort: '',
+  room: connectionStore.room || '',
+  userId: connectionStore.userId || '',
+  protocol: isHttpsEnv.value || !connectionStore.protocol ? 'https' : connectionStore.protocol
+});
+
+watch(() => form.protocol, (newProtocol) => {
+  if (isHttpsEnv.value && newProtocol === 'http') {
+    form.protocol = 'https';
+    Toast('HTTPS环境下必须使用WSS协议');
+  }
+});
+
+const getDefaultPort = (protocol: string): string => protocol === 'http' ? '8989' : '9898';
+
+const toggleAdvanced = () => {
+  advancedOpen.value = !advancedOpen.value;
+};
+
 const validateForm = (): boolean => {
-  const { serverAddress, serverPort, room, userId } = form;
-  
-  if (!serverAddress.trim() || !serverPort.trim()) {
-    Toast.fail('请输入服务器地址和端口');
+  if (!form.serverAddress.trim()) {
+    Toast.fail('请输入服务器地址');
     return false;
   }
 
-  if (!room.trim() || !userId.trim()) {
+  if (!form.room.trim() || !form.userId.trim()) {
     Toast.fail('请输入房间ID和用户ID');
     return false;
   }
@@ -137,10 +148,18 @@ const validateForm = (): boolean => {
   return true;
 };
 
+const getServerUrl = (): string => {
+  const { protocol, serverAddress, customPort } = form;
+  const portToUse = customPort.trim() || getDefaultPort(protocol);
+  return `${protocol}://${serverAddress.trim()}:${portToUse}`;
+};
+
 const updateConnectionStore = () => {
-  const { serverAddress, serverPort, room, userId, protocol } = form;
+  const { serverAddress, customPort, room, userId, protocol } = form;
+  const portToUse = customPort.trim() || getDefaultPort(protocol);
+  
   connectionStore.setServerAddress(serverAddress.trim());
-  connectionStore.setServerPort(serverPort.trim());
+  connectionStore.setServerPort(portToUse);
   connectionStore.setRoom(room.trim());
   connectionStore.setUserId(userId.trim());
   connectionStore.setProtocol(protocol);
@@ -158,24 +177,26 @@ const handleConnect = async () => {
   });
 
   try {
-    const url = `${form.protocol}://${form.serverAddress.trim()}:${form.serverPort.trim()}`;
-    await SocketService.connect(url);
+    await SocketService.connect(getServerUrl());
     await SocketService.register(form.room.trim(), form.userId.trim());
   } catch (error) {
+    Toast.clear();
     Toast.fail('连接失败，请重试');
     console.error('连接失败:', error);
   }
 };
 
 const handleDisconnect = async () => {
+  Toast.loading({
+    message: '正在断开连接...',
+    forbidClick: true,
+    duration: 1000
+  });
+  
   try {
-    Toast.loading({
-      message: '正在断开连接...',
-      forbidClick: true,
-      duration: 1000
-    });
     await SocketService.disconnect();
   } catch (error) {
+    Toast.clear();
     console.error('断开连接失败:', error);
     Toast.fail('断开连接失败，请重试');
   }
@@ -184,8 +205,15 @@ const handleDisconnect = async () => {
 const close = () => emit('close');
 
 onMounted(() => {
-  if (!form.serverPort) {
-    form.serverPort = '8989';
+  const storedPort = connectionStore.serverPort;
+  const defaultPorts = [getDefaultPort('http'), getDefaultPort('https')]; 
+  
+  if (storedPort && !defaultPorts.includes(storedPort)) {
+    form.customPort = storedPort;
+  }
+  
+  if (isHttpsEnv.value && form.protocol === 'http') {
+    form.protocol = 'https';
   }
 });
 </script>
@@ -233,6 +261,71 @@ h2 {
   margin-bottom: 1rem;
 }
 
+.server-input-container {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.protocol-select {
+  width: 22%;
+  min-width: 62px;
+}
+
+.protocol-dropdown {
+  width: 100%;
+  height: 100%;
+  padding: 0.625rem;
+  border: none;
+  border-right: 1px solid #ccc;
+  background-color: #f8f9fa;
+  font-size: 0.875rem;
+  cursor: pointer;
+  color: #333;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 1em;
+  padding-right: 1.5rem;
+  box-sizing: border-box;
+}
+
+.protocol-dropdown:focus {
+  outline: none;
+}
+
+.protocol-dropdown:disabled {
+  background-color: #f0f0f0;
+  color: #999;
+  cursor: not-allowed;
+}
+
+.protocol-dropdown option[disabled] {
+  color: #aaa;
+  font-style: italic;
+  background-color: #f8f8f8;
+}
+
+.server-input {
+  flex: 1;
+  display: flex;
+}
+
+.server-input input {
+  width: 100%;
+  height: 100%;
+  padding: 0.625rem;
+  border: none;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+}
+
 input {
   width: 100%;
   padding: 0.625rem;
@@ -240,6 +333,7 @@ input {
   border-radius: 0.75rem;
   font-size: 0.875rem;
   transition: border-color 0.3s;
+  box-sizing: border-box;
 }
 
 input:focus {
@@ -250,6 +344,41 @@ input:focus {
 input:disabled {
   background-color: #f5f5f5;
   cursor: not-allowed;
+}
+
+.advanced-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  margin: 0.5rem auto;
+  color: #666;
+  font-size: 0.8rem;
+  width: fit-content;
+  padding: 0.25rem 0.75rem;
+  border-radius: 1rem;
+  transition: background-color 0.2s;
+}
+
+.advanced-toggle:hover {
+  background-color: #f5f5f5;
+}
+
+.dropdown-icon {
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-left: 0.25rem;
+  transition: transform 0.2s ease;
+}
+
+.rotate-180 {
+  transform: rotate(180deg);
+}
+
+.advanced-settings {
+  margin-bottom: 1rem;
+  padding: 0.5rem 0;
+  border-radius: 0.75rem;
 }
 
 .buttons {
@@ -289,38 +418,6 @@ button {
 .disabled {
   background-color: #ccc;
   cursor: not-allowed;
-}
-
-.protocol-selector {
-  display: flex;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.protocol-label {
-  margin-right: 1rem;
-  font-weight: 500;
-}
-
-.protocol-options {
-  display: flex;
-  gap: 1rem;
-}
-
-.protocol-option {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  cursor: pointer;
-}
-
-.protocol-option input {
-  width: auto;
-  cursor: pointer;
-}
-
-.protocol-option span {
-  font-size: 0.875rem;
 }
 </style>
 
