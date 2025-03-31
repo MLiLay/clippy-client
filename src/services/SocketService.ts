@@ -4,6 +4,7 @@ import { useConnectionStore } from '../stores/useConnectionStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import ClipboardService from './ClipboardService';
 import { Toast } from 'vant';
+import { isTauri } from '@tauri-apps/api/core';
 
 // 类型定义
 enum MessageType {
@@ -16,6 +17,7 @@ enum EventType {
   DISCONNECT = 'disconnect',
   CONNECT_ERROR = 'connect_error',
   REGISTRATION_ERROR = 'registrationError',
+  RECEIVE_MESSAGE = 'sendMessage',
   SEND_MESSAGE = 'sendMessage',
   HISTORY = 'history',
   HISTORY_ERROR = 'historyError',
@@ -93,7 +95,7 @@ class SocketService {
       this.disconnect();
     });
     
-    this.socket.on(EventType.SEND_MESSAGE, this.handleIncomingMessage.bind(this));
+    this.socket.on(EventType.RECEIVE_MESSAGE, this.handleIncomingMessage.bind(this));
     this.socket.on(EventType.HISTORY, this.handleHistory.bind(this));
     this.socket.on(EventType.HISTORY_ERROR, (data: { message: string }) => {
       Toast.clear();
@@ -143,15 +145,16 @@ class SocketService {
    */
   private async handleIncomingMessage(data: Message): Promise<void> {
     try {
-      // 处理剪切板寄存器同步消息
-      await this.handleClipRegMessage(data);
-      
       // 添加消息到聊天记录
       const chatStore = useChatStore();
       chatStore.addMessage(data);
-      
-      // 根据设置自动复制
-      await this.tryAutoCopy(data);
+
+      if (isTauri()) {
+        // 根据设置自动复制
+        await this.tryAutoCopy(data);
+        // 处理剪切板寄存器同步消息
+        await this.handleClipRegMessage(data);
+      }
       
       console.log('收到消息:', data);
     } catch (error) {
