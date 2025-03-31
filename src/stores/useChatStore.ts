@@ -2,11 +2,12 @@ import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
 export interface Message {
+  id?: number;
   type: 'text' | 'image';
   content: string;
   userId: string;
   timestamp: string;
-  clipReg?: number;  // 剪切板寄存器索引，范围0-4，仅text类型可能有值
+  clipReg?: number;
 }
 
 export const useChatStore = defineStore('chat', () => {

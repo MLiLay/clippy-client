@@ -25,6 +25,16 @@
             {{ copyStatusText }}
           </span>
         </button>
+        <button 
+          class="header-button" 
+          @click="handleCopyCurl"
+          :disabled="curlCopyStatus !== 'idle'"
+          aria-label="curl"
+        >
+          <span :class="['copy-status', curlCopyStatus]">
+            {{ curlCopyStatusText }}
+          </span>
+        </button>
       </div>
     </div>
     <div class="message-content">
@@ -61,6 +71,7 @@ import { isTauri } from '@tauri-apps/api/core';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import ImageLightbox from './ImageLightbox.vue';
+import { useConnectionStore } from '../stores/useConnectionStore';
 
 // 常量定义
 const COPY_TIMEOUT = 3000;
@@ -83,6 +94,7 @@ const chatStore = useChatStore();
 
 // 状态管理
 const copyStatus = ref<CopyStatus>('idle');
+const curlCopyStatus = ref<CopyStatus>('idle');
 const isExpanded = ref(false);
 const needsExpansion = ref(false);
 const lightboxVisible = ref(false);
@@ -98,6 +110,12 @@ const copyStatusText = computed(() => ({
   success: '已复制',
   fail: '复制失败'
 }[copyStatus.value]));
+
+const curlCopyStatusText = computed(() => ({
+  idle: 'curl',
+  success: '已复制',
+  fail: '复制失败'
+}[curlCopyStatus.value]));
 
 const formattedTimestamp = computed(() => 
   dayjs(props.message.timestamp)
@@ -147,6 +165,44 @@ async function handleCopy() {
   }
 
   setTimeout(() => copyStatus.value = 'idle', COPY_TIMEOUT);
+}
+
+async function handleCopyCurl() {
+  if (curlCopyStatus.value !== 'idle') return;
+  
+  if (props.message.id === undefined) {
+    console.error('消息ID不存在，无法生成curl命令');
+    curlCopyStatus.value = 'fail';
+    setTimeout(() => curlCopyStatus.value = 'idle', COPY_TIMEOUT);
+    return;
+  }
+
+  try {
+    const { protocol, serverAddress, serverPort, room } = useConnectionStore();
+    const showPort = serverPort !== '443' && serverPort !== '80';
+    const url = `${protocol}://${serverAddress}${showPort ? `:${serverPort}` : ''}/${room}/${props.message.id}`;
+    
+    let curlCommand;
+    
+    if (props.message.type === 'image') {
+      const mimeMatch = props.message.content.match(/^data:([^;]+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+      
+      const fileExt = mimeType.split('/')[1] || 'jpg';
+      
+      curlCommand = `curl -L '${url}' | sed 's/^data:[^,]*,//g' | base64 -d > image_${props.message.id}.${fileExt}`;
+    } else {
+      curlCommand = `curl -L '${url}'`;
+    }
+    
+    await navigator.clipboard.writeText(curlCommand);
+    curlCopyStatus.value = 'success';
+  } catch (error) {
+    console.error('复制 curl 命令失败:', error);
+    curlCopyStatus.value = 'fail';
+  }
+
+  setTimeout(() => curlCopyStatus.value = 'idle', COPY_TIMEOUT);
 }
 
 // 生命周期钩子
