@@ -15,14 +15,23 @@ fn get_monitor_count() -> usize {
     Monitor::all().map(|m| m.len()).unwrap_or(1)
 }
 
+fn get_platform_modifier_key() -> Key {
+    if tauri_plugin_os::platform() == "macos" {
+        return Key::Meta;
+    } else {
+        return Key::Control;
+    }
+}
+
 #[tauri::command]
 fn paste_text() {
     thread::sleep(Duration::from_secs(1));
     let mut enigo = Enigo::new(&Settings::default()).unwrap();
 
-    enigo.key(Key::Control, Press).unwrap();
+    let modifier_key = get_platform_modifier_key();
+    enigo.key(modifier_key, Press).unwrap();
     enigo.key(Key::Unicode('v'), Click).unwrap();
-    enigo.key(Key::Control, Release).unwrap();
+    enigo.key(modifier_key, Release).unwrap();
 }
 
 #[tauri::command]
