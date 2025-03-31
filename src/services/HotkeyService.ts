@@ -26,7 +26,6 @@ interface RegisterConfig {
 }
 
 class HotkeyService {
-  private currentShortcut: string;
   private settingsStore: ReturnType<typeof useSettingsStore>;
   private clipRegStore: ReturnType<typeof useClipRegStore>;
   private isInitialized: boolean = false;
@@ -41,7 +40,6 @@ class HotkeyService {
   constructor() {
     this.settingsStore = useSettingsStore();
     this.clipRegStore = useClipRegStore();
-    this.currentShortcut = this.settingsStore.hotkeySendText;
     this.isTauriEnv = isTauri();
     this.isMacOS = this.isTauriEnv ? platform() === 'macos' : false;
     
@@ -52,11 +50,6 @@ class HotkeyService {
     } else {
       console.log('非Tauri环境，跳过热键初始化');
     }
-  }
-
-  // 获取当前环境是否为Tauri
-  public isInTauriEnv(): boolean {
-    return this.isTauriEnv;
   }
 
   // 在Tauri环境中执行函数，否则返回false
@@ -71,8 +64,8 @@ class HotkeyService {
 
     try {
       // 注册发送文本热键
-      if (!await this.setReadClipboardTextHotkey(this.currentShortcut)) {
-        Toast.fail(`发送文本热键 "${this.currentShortcut}" 注册失败，请重启软件。`);
+      if (!await this.setReadClipboardTextHotkey(this.settingsStore.hotkeySendText)) {
+        Toast.fail(`发送文本热键 "${this.settingsStore.hotkeySendText}" 注册失败，请重启软件。`);
       }
 
       // 注册截图热键
@@ -143,11 +136,10 @@ class HotkeyService {
             }
           }
         }, 
-        this.currentShortcut
+        this.settingsStore.hotkeySendText
       );
       
       if (success) {
-        this.currentShortcut = newShortcut;
         this.settingsStore.setReadClipboardTextHotkeySendText(newShortcut);
       }
       

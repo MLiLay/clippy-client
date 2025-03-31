@@ -128,7 +128,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useClipRegStore } from '../stores/useClipRegStore';
 import { getHotkeyService } from '../services/HotkeyService';
 import { Toast } from 'vant';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke, isTauri } from '@tauri-apps/api/core';
 
 // 类型定义
 type HotkeyType = 'send' | 'screenshot';
@@ -172,7 +172,7 @@ export default defineComponent({
     const hotkeyService = getHotkeyService();
     
     // 响应式状态
-    const isTauriEnv = ref(false);
+    const isTauriEnv = ref(isTauri());
     const isListening = ref(false);
     const activeConfigType = ref<HotkeyType | null>(null);
     const monitorCount = ref(1);
@@ -305,17 +305,6 @@ export default defineComponent({
       window.addEventListener('keydown', handleKeyDown);
     };
 
-    // 生命周期钩子
-    const checkTauriEnv = async () => {
-      try {
-        isTauriEnv.value = hotkeyService.isInTauriEnv();
-        console.log(`设置界面 - 当前环境: ${isTauriEnv.value ? 'Tauri' : 'Web'}`);
-      } catch (error) {
-        console.error('检测Tauri环境失败:', error);
-        isTauriEnv.value = false;
-      }
-    };
-
     const getMonitorCount = async () => {
       if (!isTauriEnv.value) return;
       
@@ -328,7 +317,6 @@ export default defineComponent({
     };
 
     onMounted(() => {
-      checkTauriEnv();
       if (isTauriEnv.value) {
         getMonitorCount();
       }
