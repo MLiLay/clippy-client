@@ -60,7 +60,7 @@
               :disabled="isConnected"
               placeholder="Custom Port (Leave blank for default)" 
               @keyup.enter="handleConnect"
-              type="number"
+              type="string"
               min="1"
               max="65535"
             />
