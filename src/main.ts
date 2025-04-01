@@ -11,6 +11,8 @@ import 'vant/lib/index.css';
 import { isTauri } from '@tauri-apps/api/core';
 import VueEasyLightbox from 'vue-easy-lightbox';
 import 'vue-easy-lightbox/dist/external-css/vue-easy-lightbox.css';
+import { useTray } from './composables/useTray';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 library.add(faImage, faGear, faGlobe, faPaperPlane, faCopy, faXmark, faCircleInfo, faMagnifyingGlass);
 
@@ -34,7 +36,23 @@ app.use(VueEasyLightbox);
 const initApp = async () => {
   try {
     initializeHotkeyService();
-    console.log(`应用初始化完成，环境: ${await isTauri() ? 'Tauri桌面端' : 'Web浏览器'}`);
+    
+    // 检查是否为 Tauri 环境
+    const isTauriEnv = await isTauri();
+    console.log(`应用初始化完成，环境: ${isTauriEnv ? 'Tauri桌面端' : 'Web浏览器'}`);
+    
+    // 在 Tauri 环境下初始化系统托盘
+    if (isTauriEnv) {
+      try {
+        const { initTray, handleCloseRequested } = useTray();
+        
+        // 初始化托盘并监听窗口关闭事件
+        await initTray();
+        await getCurrentWindow().listen('tauri://close-requested', handleCloseRequested);
+      } catch (error) {
+        console.error('托盘初始化失败:', error);
+      }
+    }
   } catch (error) {
     console.error('应用初始化失败:', error);
   }

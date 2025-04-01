@@ -7,6 +7,10 @@
   ],
   "permissions": [
     "core:default",
+    "core:tray:default",
+    "core:app:allow-default-window-icon",
+    "core:window:allow-hide",
+    "core:window:allow-show",
     "opener:default",
     "clipboard-manager:allow-read-text",
     "clipboard-manager:allow-read-image",
@@ -16,6 +20,9 @@
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-is-registered",
     "global-shortcut:allow-register-all",
-    "global-shortcut:allow-unregister-all"
+    "global-shortcut:allow-unregister-all",
+    "process:default",
+    "process:allow-exit",
+    "process:allow-restart"
   ]
 }
