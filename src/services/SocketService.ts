@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { useChatStore, Message } from '../stores/useChatStore';
 import { useConnectionStore } from '../stores/useConnectionStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { useClipRegStore } from '../stores/useClipRegStore';
 import ClipboardService from './ClipboardService';
 import { Toast } from 'vant';
 import { isTauri } from '@tauri-apps/api/core';
@@ -169,7 +170,6 @@ class SocketService {
     if (data.type !== MessageType.TEXT || data.clipReg === undefined) return;
     
     try {
-      const { useClipRegStore } = await import('../stores/useClipRegStore');
       const clipRegStore = useClipRegStore();
       
       const registerIndex = data.clipReg;

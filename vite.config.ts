@@ -29,4 +29,35 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // store chunks
+          'stores': [
+            './src/stores/useClipRegStore.ts',
+            './src/stores/useChatStore.ts',
+            './src/stores/useConnectionStore.ts',
+            './src/stores/useSettingsStore.ts'
+          ],
+          // services chunks
+          'core-services': [
+            './src/services/SocketService.ts',
+            './src/services/HotkeyService.ts'
+          ],
+          // ui components chunks
+          'ui-components': [
+            './src/components/Settings.vue'
+          ],
+          // vendors chunks
+          'vendors': [
+            'vue',
+            'pinia',
+            '@tauri-apps/api',
+            'socket.io-client'
+          ]
+        }
+      }
+    }
+  }
 }));
